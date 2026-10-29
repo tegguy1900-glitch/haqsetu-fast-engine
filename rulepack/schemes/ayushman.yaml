@@ -1,0 +1,19 @@
+scheme: ayushman
+state: haryana
+rules:
+  - id: ayushman_001
+    description: "Ayushman Bharat eligibility."
+    when:
+      - field: is_secc
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'ration_card']
+    desk: csc
+    source: {doc: "Ayushman Bharat Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

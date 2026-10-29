@@ -1,0 +1,73 @@
+{
+  "data_source": "STAGED v0 (synthetic paraphrases)",
+  "n_cal": 225,
+  "n_test": 315,
+  "threshold": 1.0,
+  "operating": {
+    "coverage": 0.48253968253968255,
+    "risk": 0.5460526315789473,
+    "risk_ci": [
+      0.46674019289559576,
+      0.6230946137285661
+    ],
+    "macro_f1": 0.24861239592969472,
+    "cm": {
+      "other>>ABSTAIN": 31,
+      "wage_work>>ABSTAIN": 23,
+      "pm_awas>>pm_awas": 35,
+      "crop_loss>>pmfby": 19,
+      "mudra>>ABSTAIN": 35,
+      "ujjwala>>ABSTAIN": 10,
+      "crop_loss>>water_supply": 5,
+      "wage_work>>mgnrega": 12,
+      "grievance>>water_supply": 19,
+      "ujjwala>>ujjwala": 12,
+      "ujjwala>>pmmvy": 13,
+      "water_supply>>ABSTAIN": 13,
+      "crop_loss>>ABSTAIN": 11,
+      "streetlight>>ABSTAIN": 24,
+      "water_supply>>water_supply": 22,
+      "other>>sbm_toilet": 4,
+      "streetlight>>water_supply": 11,
+      "grievance>>ABSTAIN": 16
+    },
+    "n_covered": 152
+  },
+  "tfidf_no_abstain": {
+    "coverage": 1.0,
+    "risk": 0.5619047619047619,
+    "risk_ci": [
+      0.5066929644376348,
+      0.6156248259636177
+    ],
+    "macro_f1": 0.5079687520200649,
+    "cm": {
+      "other>>disability_pension": 31,
+      "wage_work>>mgnrega": 35,
+      "pm_awas>>pm_awas": 35,
+      "crop_loss>>pmfby": 22,
+      "mudra>>mudra": 35,
+      "ujjwala>>ujjwala": 22,
+      "crop_loss>>water_supply": 5,
+      "grievance>>water_supply": 19,
+      "ujjwala>>pmmvy": 13,
+      "water_supply>>disability_pension": 13,
+      "crop_loss>>disability_pension": 8,
+      "streetlight>>streetlight": 24,
+      "water_supply>>water_supply": 22,
+      "other>>sbm_toilet": 4,
+      "streetlight>>water_supply": 11,
+      "grievance>>disability_pension": 16
+    },
+    "n_covered": 315
+  },
+  "keyword_rules": {
+    "coverage": 1.0,
+    "risk": 0.08253968253968254,
+    "risk_ci": [
+      0.8818085582749162,
+      0.9430524385335304
+    ]
+  },
+  "aurc": 0.5119559561315271
+}

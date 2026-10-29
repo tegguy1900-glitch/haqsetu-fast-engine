@@ -1,0 +1,19 @@
+scheme: pashu_kcc
+state: haryana
+rules:
+  - id: pashu_kcc_001
+    description: "Pashu KCC eligibility."
+    when:
+      - field: has_livestock
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'animal_tags']
+    desk: bank
+    source: {doc: "Pashu KCC Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

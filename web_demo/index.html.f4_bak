@@ -1,0 +1,448 @@
+<!-- HaqSetu v2 frontend (regenerated, single script block) -->
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HaqSetu | F.A.S.T. Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:#0f172a;color:#e2e8f0}
+header{display:flex;align-items:center;gap:14px;padding:14px 22px;background:#111827;border-bottom:1px solid #1e293b;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;color:#60a5fa}
+nav{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+nav button{background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:14px}
+nav button.active{background:#2563eb;color:#fff;border-color:#2563eb}
+main{padding:22px;max-width:1000px;margin:0 auto}
+.view{display:none}.view.active{display:block}
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:18px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.stat{text-align:center}.stat .n{font-size:30px;font-weight:700}.stat .l{color:#94a3b8;font-size:13px}
+label{display:block;font-size:13px;color:#cbd5e1;margin:12px 0 6px}
+input,select,textarea{width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:10px;font-size:14px;font-family:inherit}
+textarea{min-height:80px;resize:vertical}
+.btn{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:11px 16px;font-size:14px;font-weight:600;cursor:pointer;margin-top:12px}
+.btn.ghost{background:#334155}.btn.green{background:#16a34a}.btn.red{background:#dc2626}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tkt{border-left:3px solid #f59e0b;padding:10px 12px;background:#0f172a;border-radius:8px;margin-bottom:8px}
+.tkt.closed{border-left-color:#22c55e;opacity:.7}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;background:#334155}
+.badge.open{background:#7c2d12;color:#fdba74}.badge.fixed_pending_otp{background:#713f12;color:#fde68a}.badge.closed{background:#14532d;color:#bbf7d0}
+#toast-container{position:fixed;bottom:18px;right:18px;z-index:3000;display:flex;flex-direction:column;gap:8px;max-width:340px;pointer-events:none}
+.toast{background:#020617;border:1px solid #334155;border-left:4px solid #2563eb;border-radius:8px;padding:10px 12px;font-size:13px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.toast.err{border-left-color:#ef4444}.toast.ok{border-left-color:#22c55e}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;align-items:center;justify-content:center;padding:16px}
+.modal.open{display:flex}
+.modal .box{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow:auto}
+.steps{display:flex;gap:6px;margin-bottom:14px}
+.steps span{flex:1;height:4px;background:#334155;border-radius:2px}.steps span.on{background:#2563eb}
+.muted{color:#94a3b8;font-size:13px}
+a{color:#60a5fa}
+</style></head>
+<body>
+<header>
+<h1>HaqSetu <span class="muted" style="font-size:12px">F.A.S.T. Engine v2</span></h1>
+<button class="btn ghost" style="margin:0;padding:6px 10px;font-size:12px" onclick="pingHealth()">Test Backend</button>
+<nav>
+<button id="nav-citizen" class="active" onclick="switchView('citizen')">Citizen</button>
+<button id="nav-je" onclick="switchView('je')">JE / Field</button>
+<button id="nav-sarpanch" onclick="switchView('sarpanch')">Sarpanch</button>
+</nav>
+</header>
+<main>
+<section id="view-citizen" class="view active">
+<div class="card">
+<h2 style="margin-top:0">Report a Grievance or Find a Scheme</h2>
+<p class="muted">Speak or type in plain language (Hindi/English mix ok). The AI routes it to a scheme or files an infra ticket.</p>
+<div class="row"><button id="mic-btn" class="btn ghost" onclick="toggleListening()">Speak</button><span id="live-transcript" class="muted">not listening</span></div>
+<label>Or type</label>
+<textarea id="manual-input" placeholder="e.g. mera handpump toot gaya / widow pension chahiye"></textarea>
+<button class="btn" onclick="processInput()">Analyze Request</button>
+<button class="btn ghost" onclick="openCatalog()">Browse all schemes</button>
+<div id="intake-results" style="margin-top:14px"></div>
+</div>
+<div class="card">
+<h3 style="margin-top:0">File an Infrastructure Ticket</h3>
+<label>Description</label>
+<textarea id="infra-desc" placeholder="e.g. drain near temple blocked, water stagnating"></textarea>
+<label>Photo (optional)</label>
+<input type="file" id="infra-photo" accept="image/*">
+<button class="btn green" onclick="submitInfraTicket()">Submit Ticket (sends GPS + photo)</button>
+<div id="infra-out" class="muted" style="margin-top:10px"></div>
+</div>
+</section>
+<section id="view-je" class="view">
+<div class="card"><h2 style="margin-top:0">Field Engineer Queue</h2>
+<button class="btn ghost" onclick="loadJETickets()">Refresh</button>
+<div id="je-tickets-list" style="margin-top:12px"></div>
+</div>
+</section>
+<section id="view-sarpanch" class="view">
+<div class="grid" style="margin-bottom:16px">
+<div class="card stat"><div class="n" id="stat-open-count" style="color:#f59e0b">0</div><div class="l">Open Tickets</div></div>
+<div class="card stat"><div class="n" id="stat-resolved-count" style="color:#22c55e">0</div><div class="l">Resolved</div></div>
+<div class="card stat"><div class="n" id="stat-pending-apps" style="color:#60a5fa">0</div><div class="l">Scheme Applications</div></div>
+</div>
+<div class="card"><h3 style="margin-top:0">Panchayat Meeting</h3>
+<div class="row">
+<button class="btn ghost" onclick="startMeetingSim()">Simulate Meeting Record</button>
+<button class="btn ghost" onclick="clearMeetingLog()">Clear</button>
+<button class="btn" onclick="generateSDMReport()">Generate SDM Report (prints Merkle hash)</button>
+</div>
+<pre id="meeting-transcript" class="muted" style="white-space:pre-wrap;margin-top:12px;min-height:40px"></pre>
+<div id="post-meeting-actions"></div>
+</div>
+<div class="card"><h3 style="margin-top:0">Full Agenda</h3>
+<button class="btn ghost" onclick="loadAgenda()">Load</button>
+<div id="agenda-items-list" style="margin-top:12px"></div>
+<canvas id="agendaChart" height="120" style="margin-top:14px"></canvas>
+</div>
+</section>
+</main>
+<div id="wizard-modal" class="modal"><div class="box">
+<h3 id="wizard-scheme-name" style="margin-top:0">Apply</h3>
+<div class="steps"><span id="ws1" class="on"></span><span id="ws2"></span><span id="ws3"></span></div>
+<div id="wizard-form-area"></div>
+<div class="row" style="margin-top:14px">
+<button class="btn ghost" id="wizard-back-btn" onclick="wizBack()">Back</button>
+<button class="btn" id="wizard-next-btn" onclick="wizNext()">Review</button>
+<button class="btn red" id="wizard-cancel-btn" onclick="closeWizard()">Cancel</button>
+</div>
+</div></div>
+<div id="catalog-modal" class="modal"><div class="box" style="max-width:760px">
+<h3 style="margin-top:0">All Schemes <span class="muted" id="catalog-count" style="font-size:13px"></span></h3>
+<div id="catalog-body" class="muted">Loading…</div>
+<div class="row" style="margin-top:12px"><button class="btn red" onclick="document.getElementById('catalog-modal').classList.remove('open')">Close</button></div>
+</div></div>
+<div id="fix-modal" class="modal"><div class="box">
+<h3 style="margin-top:0">Mark Ticket Fixed</h3>
+<p class="muted">Capture GPS at the repair site. System verifies within 50 m of the original complaint before issuing an OTP.</p>
+<input type="hidden" id="modal-ticket-id">
+<div class="row"><input id="fix-lat" placeholder="lat"><input id="fix-lon" placeholder="lon"></div>
+<button class="btn ghost" style="margin-top:8px" onclick="geoFillFix()">Use my location</button>
+<label>Citizen mobile (for OTP)</label>
+<input id="fix-mobile" value="+919876543210">
+<button class="btn green" onclick="submitFix()">Verify and Send OTP</button>
+<div id="fix-otp-area" style="display:none;margin-top:12px">
+<label>Enter OTP shown to citizen</label><input id="fix-otp" placeholder="4 digits">
+<button class="btn" onclick="submitClose()">Close Ticket</button>
+</div>
+<button class="btn red" style="margin-top:12px" onclick="closeFixModal()">Cancel</button>
+</div></div>
+<div id="toast-container"></div>
+<script>
+var API="";
+var SCHEMES={"MGNREGA":"MGNREGA Job Card","OLD_AGE_PENSION":"Old Age Pension","VIDHWA_PENSION":"Widow Pension"};
+var wiz={schemeId:"",schemeName:"",step:1,data:{}};
+var recog=null,listening=false,_chart=null;
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c];});}
+function toast(msg,type){var c=document.getElementById("toast-container");var d=document.createElement("div");d.className="toast "+(type||"");d.textContent=msg;c.appendChild(d);setTimeout(function(){d.remove();},6000);}
+window.onerror=function(m,s,l){toast("JS ERROR: "+m+" (line "+l+")","err");};
+function api(path,body){var o={method:body?"POST":"GET",headers:{"Content-Type":"application/json"}};if(body){o.body=JSON.stringify(body);}return fetch(API+path,o).then(function(r){return r.json().then(function(j){return {ok:r.status<400,status:r.status,data:j};});});}
+function switchView(v){["citizen","je","sarpanch"].forEach(function(x){document.getElementById("view-"+x).classList.toggle("active",x===v);document.getElementById("nav-"+x).classList.toggle("active",x===v);});if(v==="je"){loadJETickets();}if(v==="sarpanch"){loadAgenda();}}
+function pingHealth(){api("/health").then(function(r){toast("Backend /health -> "+r.status+(r.data&&r.data.engine?" ("+r.data.engine+")":""),r.ok?"ok":"err");}).catch(function(e){toast("Backend unreachable: "+e.message,"err");});}
+function toggleListening(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;var li=document.getElementById("live-transcript"), mi=document.getElementById("manual-input");if(!SR){ if(li)li.textContent="Voice needs Chrome/Edge (no Speech API here). Type below \u2014 works everywhere."; if(mi){mi.focus();} toast("Open Chrome/Edge to use the mic; typing works in any browser","err"); return; }if(listening){ if(recog){recog.stop();} return; }recog=new SR(); recog.lang="en-IN"; recog.interimResults=true; recog.continuous=false;recog.onresult=function(e){ var fin="",inter=""; for(var i=0;i<e.results.length;i++){ if(e.results[i].isFinal)fin+=e.results[i][0].transcript; else inter+=e.results[i][0].transcript; } var txt=(fin||inter).trim(); if(li)li.textContent=txt||"\u2026listening"; if(mi&&txt)mi.value=txt; };recog.onend=function(){ listening=false; var b=document.getElementById("mic-btn"); if(b)b.textContent="\ud83c\udfa4 Speak"; };recog.onerror=function(e){ listening=false; var b=document.getElementById("mic-btn"); if(b)b.textContent="\ud83c\udfa4 Speak"; var msg=(e&&e.error)==="not-allowed"?"Mic blocked \u2014 allow permission, or type below.":("Mic error: "+(e&&e.error||"unknown")+" \u2014 type below."); if(li)li.textContent=msg; if(mi)mi.focus(); toast(msg,"err"); };listening=true; var b2=document.getElementById("mic-btn"); if(b2)b2.textContent="\u23f9 Stop"; try{ recog.start(); }catch(err){ listening=false; if(b2)b2.textContent="\ud83c\udfa4 Speak"; if(li)li.textContent="Could not start mic: "+err.message+" \u2014 type below."; if(mi)mi.focus(); }}
+function fillInfraFromManual(){switchView("citizen");document.getElementById("infra-desc").value=document.getElementById("manual-input").value;toast("Copied into ticket box - add GPS/photo and submit","ok");}
+function processInput(){var t=document.getElementById("manual-input").value.trim();if(!t){toast("Type or speak something first","err");return;}var box=document.getElementById("intake-results");box.innerHTML='<span class="muted">Analyzing...</span>';api("/api/voice/match",{text:t}).then(function(r){var d=r.data||{};if(d.intent==="INFRA"){box.innerHTML='<div class="card" style="border-left:3px solid #f59e0b"><b>Infra issue detected</b> ('+Math.round((d.confidence||0)*100)+'%)<br><span class="muted">'+esc(d.message||"")+'</span><br><button class="btn green" onclick="fillInfraFromManual()">File this as a ticket</button></div>';return;}var s=d.schemes||[];var h='<p class="muted">Detected: <b>'+esc(d.detected_intent)+'</b> confidence '+Math.round((d.ai_confidence||0)*100)+'%</p><div class="grid">';s.forEach(function(x){h+='<div class="card"><b>'+esc(x.name)+'</b><p class="muted">'+(x.can_apply?"Eligible to apply":"No direct match")+'</p>'+(x.can_apply?'<button class="btn" onclick="startWizard(\''+esc(x.id)+'\')">Apply Now</button>':'')+'</div>';});box.innerHTML=h+'</div>';}).catch(function(e){box.innerHTML="";toast("Intake failed: "+e.message,"err");});}
+function startWizard(id){
+  if(id==="__CATALOG__"){ openCatalog(); return; }
+  fetch(API+"/api/scheme/schema/"+id).then(function(r){return r.json();}).then(function(sc){
+    if(!sc||!sc.fields){toast("Schema unavailable for "+id,"err");return;}
+    wiz={schemeId:id,schema:sc,step:1,data:{},docs:{},receipt:null,errors:{},reasons:null};
+    document.getElementById("wizard-scheme-name").textContent=sc.title||id;
+    renderWiz();
+    document.getElementById("wizard-modal").classList.add("open");
+  }).catch(function(e){toast("Schema fetch failed: "+e.message+" - did you relaunch the server after step 1?","err");});
+}
+function closeWizard(){document.getElementById("wizard-modal").classList.remove("open");}
+function infoHtml(){
+  var sc=wiz.schema; if(!sc) return "";
+  var h='<div class="card" style="background:#0f172a;margin-bottom:12px"><b>Eligibility rules</b><ul style="margin:6px 0 0;padding-left:18px;font-size:13px;color:#cbd5e1">';
+  (sc.eligibility_rules||[]).forEach(function(r){h+="<li>"+esc(r)+"</li>";});
+  h+='</ul><div style="margin-top:8px;font-size:12px;color:#94a3b8">System will verify: ';
+  (sc.external_checks||[]).forEach(function(c,i){h+=(i?", ":"")+esc(c);});
+  h+="</div></div>";
+  return h;
+}
+function renderField(f){
+  var id="wf_"+f.key; var val=wiz.data[f.key]||""; var err=wiz.errors[f.key];
+  var req=f.required?' <span style="color:#f87171">*</span>':"";
+  var h='<div style="margin-bottom:10px"><label>'+esc(f.label)+req+'</label>';
+  if(f.type==="file"){
+    var have=wiz.docs[f.key]?" <span style=\"color:#4ade80;font-size:12px\">attached &#10003;</span>":"";
+    h+='<input type="file" id="'+id+'" data-key="'+f.key+'" accept="image/*,.pdf" style="padding:6px">'+have;
+  } else if(f.type==="select"){
+    h+='<select id="'+id+'"><option value="">-- choose --</option>';
+    (f.options||[]).forEach(function(o){h+='<option value="'+esc(o)+'"'+(String(val)===o?" selected":"")+'>'+esc(o)+'</option>';});
+    h+='</select>';
+  } else {
+    var t=(f.type==="number")?"number":"text";
+    h+='<input type="'+t+'" id="'+id+'" value="'+esc(val)+'"'+(f.key==="aadhaar"?' maxlength="12"':"")+'>';
+  }
+  if(f.help) h+='<div class="muted" style="font-size:11px;margin-top:3px">'+esc(f.help)+'</div>';
+  if(err) h+='<div style="color:#f87171;font-size:12px;margin-top:3px">'+esc(err)+'</div>';
+  h+='</div>';
+  return h;
+}
+function renderWiz(){
+  var area=document.getElementById("wizard-form-area"); if(!area||!wiz.schema) return;
+  var h="";
+  if(wiz.step===1){
+    h+=infoHtml();
+    wiz.schema.fields.forEach(function(f){h+=renderField(f);});
+  } else if(wiz.step===2){
+    h+=infoHtml();
+    h+='<div class="card" style="background:#0f172a"><b>Review</b><table style="width:100%;font-size:13px;margin-top:6px">';
+    wiz.schema.fields.forEach(function(f){
+      var v;
+      if(f.type==="file"){ v=wiz.docs[f.key]?"Attached &#10003;":"--"; }
+      else { v=wiz.data[f.key]||"--"; if(f.key==="aadhaar"&&v&&String(v).length>4) v="XXXX-XXXX-"+String(v).slice(-4); }
+      h+="<tr><td class='muted' style='padding:3px 8px 3px 0'>"+esc(f.label)+"</td><td>"+esc(v)+"</td></tr>";
+    });
+    h+="</table></div>";
+    if(wiz.reasons){ h+='<div class="card" style="border-left:3px solid #ef4444;background:#0f172a"><b style="color:#f87171">Cannot register</b><ul style="margin:6px 0 0;padding-left:18px;font-size:13px">'; wiz.reasons.forEach(function(r){h+="<li>"+esc(r)+"</li>";}); h+="</ul></div>"; }
+  } else {
+    h+=renderReceipt();
+  }
+  area.innerHTML=h;
+  if(wiz.step===1){
+    Array.prototype.forEach.call(area.querySelectorAll('input[type=file][data-key]'),function(el){
+      el.onchange=function(){ var k=el.getAttribute("data-key"); var fl=el.files&&el.files[0]; if(!fl){delete wiz.docs[k];renderWiz();return;} var rd=new FileReader(); rd.onload=function(){ wiz.docs[k]=rd.result; renderWiz(); }; rd.readAsDataURL(fl); };
+    });
+  }
+  setSteps();
+}
+function setSteps(){
+  var d1=document.getElementById("ws1"),d2=document.getElementById("ws2"),d3=document.getElementById("ws3");
+  if(d1)d1.className=wiz.step>=1?"on":""; if(d2)d2.className=wiz.step>=2?"on":""; if(d3)d3.className=wiz.step>=3?"on":"";
+  var nb=document.getElementById("wizard-back-btn"),nx=document.getElementById("wizard-next-btn"),cx=document.getElementById("wizard-cancel-btn");
+  if(nb)nb.style.display=(wiz.step>1&&wiz.step<3)?"":"none";
+  if(cx)cx.style.display=(wiz.step<3)?"":"none";
+  if(nx)nx.textContent=(wiz.step===1?"Review":(wiz.step===2?"Confirm & Register":"Done"));
+}
+function collectStep1(){
+  wiz.schema.fields.forEach(function(f){ if(f.type==="file")return; var el=document.getElementById("wf_"+f.key); if(el) wiz.data[f.key]=el.value; });
+}
+function wizBack(){ if(wiz.step===3){wiz.step=2;wiz.receipt=null;wiz.reasons=null;renderWiz();} else if(wiz.step===2){wiz.step=1;wiz.reasons=null;renderWiz();} }
+function wizNext(){
+  if(wiz.step===1){
+    collectStep1(); wiz.errors={};
+    wiz.schema.fields.forEach(function(f){
+      if(f.type==="file"){ if(f.required&&!wiz.docs[f.key]) wiz.errors[f.key]="document required"; return; }
+      if(f.required&&!(String(wiz.data[f.key]||"").trim())) wiz.errors[f.key]="required";
+    });
+    if(Object.keys(wiz.errors).length){ renderWiz(); toast("Fill the highlighted fields","err"); return; }
+    wiz.step=2; renderWiz(); return;
+  }
+  if(wiz.step===2){ doRegister(); return; }
+  closeWizard();
+}
+function doRegister(){
+  var nx=document.getElementById("wizard-next-btn"); if(nx){nx.disabled=true;nx.textContent="Registering...";}
+  fetch(API+"/api/scheme/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scheme_id:wiz.schemeId,applicant:wiz.data,docs:wiz.docs})})
+  .then(function(r){return r.json().then(function(j){return {status:r.status,data:j};});})
+  .then(function(res){
+    var d=res.data||{}; if(nx){nx.disabled=false;}
+    if(d.ok&&d.stage==="registered"){ wiz.receipt=d; wiz.step=3; setSteps(); renderWiz(); toast("Registered: "+d.registration_id,"ok"); loadAgenda(); return; }
+    if(d.stage==="validation"){ wiz.errors=d.errors||{}; wiz.step=1; renderWiz(); toast("Server rejected some fields","err"); return; }
+    wiz.reasons=d.reasons||[d.error||"Registration refused"]; renderWiz(); toast(d.stage==="duplicate"?"Duplicate application":"Not eligible","err");
+  })
+  .catch(function(e){ if(nx)nx.disabled=false; toast("Register failed: "+e.message,"err"); });
+}
+function renderReceipt(){
+  var r=wiz.receipt||{}; var st=r.status||"submitted";
+  var h='<div class="card" style="border-left:3px solid #22c55e;background:#0f172a"><div class="muted" style="font-size:12px">Registration ID</div><div style="font-size:22px;font-weight:700;color:#4ade80">'+esc(r.registration_id||"--")+'</div><div style="margin-top:6px"><span class="badge '+esc(st)+'">'+esc(st)+'</span></div></div>';
+  if((r.warnings||[]).length){ h+='<div class="card" style="background:#0f172a"><b>Flagged for officer review</b><ul style="margin:6px 0 0;padding-left:18px;font-size:13px">'; r.warnings.forEach(function(w){h+="<li><b>"+esc(w.check)+"</b>: "+esc(w.status)+" - "+esc(w.note||"")+"</li>";}); h+="</ul></div>"; }
+  h+='<div class="card" style="background:#0f172a"><b>Audit trail</b><div style="margin-top:8px;border-left:2px solid #334155;padding-left:14px">';
+  (r.audit||[]).forEach(function(e){ h+='<div style="margin-bottom:8px"><div style="font-size:11px;color:#64748b">'+esc(e.ts)+'</div><div style="font-size:13px"><b>'+esc(e.actor)+'</b> . '+esc(e.event)+(e.detail?' <span class="muted">- '+esc(String(e.detail).slice(0,80))+'</span>':"")+'</div></div>'; });
+  h+="</div><div class='muted' style='font-size:11px;margin-top:6px'>Central audited record created.<div id='bot-attach-out' style='margin-top:8px'></div><button class='btn' style='margin-top:6px' onclick='runBotAttach()'>Run Vision Bot (submit to Govt portal)</button></div></div>";
+  return h;
+}
+function openCatalog(){
+  document.getElementById("catalog-modal").classList.add("open");
+  var b=document.getElementById("catalog-body"); b.innerHTML="Loading…";
+  fetch(API+"/api/scheme/list").then(function(r){return r.json();}).then(function(d){
+    var cats=d.categories||{}; var n=d.count||0;
+    document.getElementById("catalog-count").textContent="("+n+" schemes)";
+    var order=Object.keys(cats).sort(); var h="";
+    order.forEach(function(cat){
+      h+='<div style="margin:14px 0 6px"><b style="color:#60a5fa">'+esc(cat)+'</b></div><div class="grid">';
+      cats[cat].forEach(function(s){
+        h+='<div class="card" style="margin:0"><b>'+esc(s.title)+'</b><p class="muted" style="font-size:12px;margin:6px 0">'+esc(s.summary||"")+'</p><button class="btn" style="margin-top:6px" onclick="document.getElementById(\'catalog-modal\').classList.remove(\'open\');startWizard(\''+esc(s.id)+'\')">Apply</button></div>';
+      });
+      h+='</div>';
+    });
+    b.innerHTML=h||'<span class="muted">No schemes returned.</span>';
+  }).catch(function(e){b.innerHTML="";toast("Catalog failed: "+e.message+" - did you relaunch after Block B?","err");});
+}
+function runBotAttach(){
+  var rid=(wiz.receipt&&wiz.receipt.application_id)||0; if(!rid){toast("No application id","err");return;}
+  var out=document.getElementById("bot-attach-out");
+  if(out) out.innerHTML="<span class='muted'>Running Vision Bot on the govt portal... watch the server tab.</span>";
+  fetch(API+"/api/scheme/attach_bot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({application_id:rid})})
+  .then(function(r){return r.json();})
+  .then(function(d){
+    if(!d||!d.ok){ if(out)out.innerHTML="<span style='color:#f87171'>"+esc((d&&d.error)||"attach failed")+"</span>"; return; }
+    wiz.receipt.status=d.status; wiz.receipt.audit=d.audit; wiz.receipt.screenshot_path=d.screenshot_path; wiz.receipt.bot_status=d.bot_status;
+    var shot = d.screenshot_path ? ("<div style='margin-top:6px'><a href='/uploads/"+esc(String(d.screenshot_path).split("/").pop())+"' target='_blank'>View portal proof screenshot</a></div>") : "";
+    var badge = "<span class='badge "+esc(d.status)+"'>"+esc(d.status)+"</span>";
+    var msg = d.bot_status==="success" ? "Submitted to central portal (same record, no duplicate row)." : "No central portal for this scheme -> queued for officer review.";
+    if(out) out.innerHTML="<div style='margin-top:6px'>"+badge+" <span class='muted' style='font-size:12px'>bot: "+esc(d.bot_status||"")+"</span></div>"+shot+"<div class='muted' style='font-size:11px;margin-top:4px'>"+msg+"</div>";
+    toast(d.bot_status==="success"?("Portal submit: "+d.status):"Officer review queue", d.bot_status==="success"?"ok":"");
+    loadAgenda();
+  })
+  .catch(function(e){ if(out)out.innerHTML="<span style='color:#f87171'>"+esc(e.message)+"</span>"; toast("Attach failed: "+e.message,"err"); });
+}
+function fileToDataURL(inp,cb){var f=inp.files&&inp.files[0];if(!f){cb(null);return;}var rd=new FileReader();rd.onload=function(){cb(rd.result);};rd.readAsDataURL(f);}
+function geo(cb){if(navigator.geolocation){navigator.geolocation.getCurrentPosition(function(p){cb(p.coords.latitude,p.coords.longitude);},function(){cb(28.9069,77.7453);},{enableHighAccuracy:true,timeout:4000});}else{cb(28.9069,77.7453);}}
+function submitInfraTicket(){var desc=document.getElementById("infra-desc").value.trim();if(!desc){toast("Describe the issue","err");return;}var out=document.getElementById("infra-out");out.textContent="Fetching GPS + encoding photo...";fileToDataURL(document.getElementById("infra-photo"),function(photo){geo(function(lat,lon){api("/api/infra/create",{description:desc,lat:lat,lon:lon,photo:photo}).then(function(r){if(r.ok&&r.data.ticket_id){out.textContent="Ticket #"+r.data.ticket_id+" created (geo "+lat.toFixed(4)+", "+lon.toFixed(4)+").";toast("Ticket #"+r.data.ticket_id+" filed","ok");document.getElementById("infra-desc").value="";loadJETickets();}else{out.textContent="Failed: "+JSON.stringify(r.data);toast("Create failed","err");}}).catch(function(e){out.textContent="";toast("Create error: "+e.message,"err");});});});}
+function loadJETickets(){var list=document.getElementById("je-tickets-list");list.innerHTML='<span class="muted">Loading...</span>';api("/api/agenda").then(function(r){var ts=(r.data&&r.data.tickets)||[];var act=ts.filter(function(t){return t.status!=="closed";});if(!act.length){list.innerHTML='<p class="muted">No active tickets</p>';return;}list.innerHTML=act.map(function(t){return '<div class="tkt"><div class="row" style="justify-content:space-between"><b>#'+t.id+' '+esc(String(t.description||"").slice(0,60))+'</b><span class="badge '+esc(t.status)+'">'+esc(t.status)+'</span></div><div class="muted" style="margin:4px 0">geo '+Number(t.geo_lat).toFixed(4)+', '+Number(t.geo_lon).toFixed(4)+'</div><button class="btn green" onclick="openFixModal('+t.id+','+Number(t.geo_lat)+','+Number(t.geo_lon)+')">Mark Fixed</button></div>';}).join("");}).catch(function(e){list.innerHTML="";toast("Agenda load failed: "+e.message,"err");});}
+function openFixModal(id,lat,lon){document.getElementById("modal-ticket-id").value=id;document.getElementById("fix-lat").value=lat;document.getElementById("fix-lon").value=lon;document.getElementById("fix-otp-area").style.display="none";document.getElementById("fix-modal").classList.add("open");}
+function closeFixModal(){document.getElementById("fix-modal").classList.remove("open");}
+function geoFillFix(){geo(function(lat,lon){document.getElementById("fix-lat").value=lat;document.getElementById("fix-lon").value=lon;});}
+function submitFix(){var id=document.getElementById("modal-ticket-id").value;api("/api/infra/fix",{ticket_id:Number(id),new_lat:parseFloat(document.getElementById("fix-lat").value)||0,new_lon:parseFloat(document.getElementById("fix-lon").value)||0,citizen_mobile:document.getElementById("fix-mobile").value}).then(function(r){if(r.ok){document.getElementById("fix-otp-area").style.display="block";toast(r.data.message||"OTP issued","ok");if(r.data.otp_preview){document.getElementById("fix-otp").placeholder="demo OTP: "+r.data.otp_preview;}}else{toast(r.data.error||"Geo mismatch / not found","err");}}).catch(function(e){toast("Fix error: "+e.message,"err");});}
+function submitClose(){var id=document.getElementById("modal-ticket-id").value;api("/api/infra/close",{ticket_id:Number(id),otp:document.getElementById("fix-otp").value.trim()}).then(function(r){if(r.ok){toast("Ticket closed","ok");closeFixModal();loadJETickets();}else{toast(r.data.error||"Invalid OTP","err");}}).catch(function(e){toast("Close error: "+e.message,"err");});}
+function loadAgenda(){api("/api/agenda").then(function(r){var d=r.data||{};var ts=d.tickets||[],ap=d.applications||[];var open=ts.filter(function(t){return t.status!=="closed";}).length;var res=ts.filter(function(t){return t.status==="closed";}).length;document.getElementById("stat-open-count").textContent=open;document.getElementById("stat-resolved-count").textContent=res;document.getElementById("stat-pending-apps").textContent=ap.length;var h="<h4>Tickets</h4>"+ts.map(function(t){return '<div class="tkt '+(t.status==="closed"?"closed":"")+'">#'+t.id+' '+esc(String(t.description||"").slice(0,50))+' <span class="badge '+esc(t.status)+'">'+esc(t.status)+'</span></div>';}).join("")+"<h4>Applications</h4>"+(ap.length?ap.map(function(a){return '<div class="tkt">'+esc(a.scheme_name)+' '+esc(a.reg_id_generated||"-")+' <span class="badge closed">'+esc(a.bot_status)+'</span></div>';}).join(""):'<p class="muted">none yet</p>');document.getElementById("agenda-items-list").innerHTML=h;drawChart(open,res,ap.length);}).catch(function(e){toast("Agenda failed: "+e.message,"err");});}
+function drawChart(o,rr,a){if(typeof Chart==="undefined"){return;}var ctx=document.getElementById("agendaChart");if(_chart){_chart.destroy();}_chart=new Chart(ctx,{type:"doughnut",data:{labels:["Open","Resolved","Applications"],datasets:[{data:[o,rr,a],backgroundColor:["#f59e0b","#22c55e","#60a5fa"]}]},options:{plugins:{legend:{labels:{color:"#cbd5e1"}}}}});}
+function startMeetingSim(){var t=document.getElementById("meeting-transcript");var lines=["[10:02] Sarpanch: Meeting called to order.","[10:03] Reviewing open infra tickets.","[10:05] JE reports drain cleared at ward 4.","[10:06] Pension applications approved by bot.","[10:07] Motion: seal today's ledger. Carried."];t.textContent="";var i=0;var iv=setInterval(function(){if(i>=lines.length){clearInterval(iv);document.getElementById("post-meeting-actions").innerHTML='<button class="btn" onclick="generateSDMReport()">Generate SDM Report from this meeting</button>';return;}t.textContent+=lines[i]+"\n";i++;},700);}
+function clearMeetingLog(){document.getElementById("meeting-transcript").textContent="";document.getElementById("post-meeting-actions").innerHTML="";}
+function generateSDMReport(){api("/api/meeting/report",{}).then(function(r){if(r.ok&&r.data.download_url){toast("Report generated","ok");document.getElementById("post-meeting-actions").innerHTML='<a class="btn" href="'+esc(r.data.download_url)+'" target="_blank" style="display:inline-block;text-decoration:none">Download PDF ('+esc(r.data.message||"")+')</a>';loadAgenda();}else{toast(r.data.error||"Report failed (PDF lib?)","err");}}).catch(function(e){toast("Report error: "+e.message,"err");});}
+window.addEventListener("DOMContentLoaded",function(){switchView("citizen");});
+
+/* ===== FENCE3-INFRA-UI : realistic work-order lifecycle (appended overrides; proven code untouched) ===== */
+var JE_NAME_DEFAULT="AE-01 Field Engineer";
+function _jeName(){var e=document.getElementById("je-name");return (e&&e.value.trim())||JE_NAME_DEFAULT;}
+function _statusBadge(st){var m={open:"#f59e0b",assigned:"#60a5fa",in_progress:"#a78bfa",awaiting_otp:"#fde68a",reopened:"#fb7185",closed:"#22c55e",rejected:"#94a3b8"};var c=m[st]||"#64748b";return '<span class="badge" style="background:'+c+'22;color:'+c+';border:1px solid '+c+'55">'+esc(st)+'</span>';}
+function _sevBadge(sv){var m={CRITICAL:"#ef4444",HIGH:"#f97316",MEDIUM:"#eab308",LOW:"#64748b"};var c=m[sv]||"#64748b";return '<span class="badge" style="background:'+c+'22;color:'+c+'">'+esc(sv)+'</span>';}
+function infraInit(){
+  var desc=document.getElementById("infra-desc");
+  if(desc && !document.getElementById("infra-category")){
+    var wrap=document.createElement("div"); wrap.className="row"; wrap.style.marginBottom="8px";
+    var lc=document.createElement("label"); lc.textContent="Category"; lc.style.width="auto"; lc.style.margin="0 6px 0 0";
+    var cat=document.createElement("select"); cat.id="infra-category";
+    [["AUTO","Auto-detect from text"],["WATER","Water / handpump"],["DRAIN","Drainage / sewer"],["ROAD","Road / pavement"],["STREETLIGHT","Streetlight / power"],["SANITATION","Sanitation / waste"],["OTHER","Other"]].forEach(function(o){var e=document.createElement("option");e.value=o[0];e.textContent=o[1];cat.appendChild(e);});
+    var ls=document.createElement("label"); ls.textContent="Severity"; ls.style.width="auto"; ls.style.margin="0 6px 0 12px";
+    var sev=document.createElement("select"); sev.id="infra-severity";
+    [["LOW","Low"],["MEDIUM","Medium"],["HIGH","High"],["CRITICAL","Critical"]].forEach(function(o){var e=document.createElement("option");e.value=o[0];e.textContent=o[1];sev.appendChild(e);}); sev.value="MEDIUM";
+    wrap.appendChild(lc);wrap.appendChild(cat);wrap.appendChild(ls);wrap.appendChild(sev);
+    var lbl=desc.previousElementSibling; desc.parentNode.insertBefore(wrap, lbl||desc);
+  }
+  var fbox=document.querySelector("#fix-modal .box"); var fref=document.getElementById("fix-mobile");
+  if(fbox && fref && !document.getElementById("fix-afterphoto")){
+    var al=document.createElement("label"); al.textContent="After-repair photo (proof of work)";
+    var ai=document.createElement("input"); ai.type="file"; ai.id="fix-afterphoto"; ai.accept="image/*"; ai.style.padding="6px";
+    var ad=document.createElement("div"); ad.id="fix-dist"; ad.className="muted"; ad.style.marginTop="6px";
+    fref.parentNode.insertBefore(al,fref); fref.parentNode.insertBefore(ai,fref); fref.parentNode.insertBefore(ad,fref);
+  }
+  var jl=document.getElementById("je-tickets-list");
+  if(jl && !document.getElementById("je-name")){
+    var nl=document.createElement("label"); nl.textContent="Engineer on duty";
+    var ni=document.createElement("input"); ni.id="je-name"; ni.value=JE_NAME_DEFAULT; ni.style.maxWidth="260px";
+    jl.parentNode.insertBefore(nl,jl); jl.parentNode.insertBefore(ni,jl);
+  }
+  if(!document.getElementById("audit-modal")){
+    var am=document.createElement("div"); am.id="audit-modal"; am.className="modal";
+    var bx=document.createElement("div"); bx.className="box"; bx.style.maxWidth="560px";
+    var h3=document.createElement("h3"); h3.textContent="Ticket Audit Trail"; h3.style.marginTop="0";
+    var bd=document.createElement("div"); bd.id="audit-body"; bd.className="muted";
+    var rw=document.createElement("div"); rw.className="row"; rw.style.marginTop="12px";
+    var cb=document.createElement("button"); cb.className="btn red"; cb.textContent="Close"; cb.onclick=function(){document.getElementById("audit-modal").classList.remove("open");};
+    rw.appendChild(cb); bx.appendChild(h3); bx.appendChild(bd); bx.appendChild(rw); am.appendChild(bx); document.body.appendChild(am);
+  }
+}
+function submitInfraTicket(){
+  var desc=document.getElementById("infra-desc").value.trim(); if(!desc){toast("Describe the issue","err");return;}
+  var catEl=document.getElementById("infra-category"), sevEl=document.getElementById("infra-severity");
+  var cat=catEl?catEl.value:"AUTO", sev=sevEl?sevEl.value:"MEDIUM";
+  var out=document.getElementById("infra-out"); if(out)out.textContent="Fetching GPS + encoding photo...";
+  fileToDataURL(document.getElementById("infra-photo"),function(photo){ geo(function(lat,lon){
+    var body={description:desc,lat:lat,lon:lon,severity:sev,photo:photo,reporter:"citizen"};
+    if(cat&&cat!=="AUTO")body.category=cat;
+    api("/api/infra/create",body).then(function(r){ var d=r.data||{};
+      if(r.ok&&d.ticket_id){ var msg="Ticket #"+d.ticket_id+" filed · "+(d.wo_number||"")+" · SLA "+(d.sla_hours||"?")+"h";
+        if(d.possible_duplicate_of) msg+=" · linked to existing #"+d.possible_duplicate_of+" (same fault nearby)";
+        if(out)out.innerHTML='<span style="color:#4ade80">'+esc(msg)+'</span>';
+        toast("Ticket #"+d.ticket_id+" created","ok"); document.getElementById("infra-desc").value=""; loadJETickets();
+      } else { if(out)out.textContent="Failed: "+JSON.stringify(d).slice(0,160); toast("Create failed","err"); }
+    }).catch(function(e){ if(out)out.textContent=""; toast("Create error: "+e.message,"err"); });
+  });});
+}
+function loadJETickets(){
+  var list=document.getElementById("je-tickets-list"); if(!list)return; list.innerHTML='<span class="muted">Loading...</span>';
+  api("/api/agenda").then(function(r){ var ts=(r.data&&r.data.tickets)||[];
+    var act=ts.filter(function(t){return t.status!=="closed"&&t.status!=="rejected";});
+    if(!act.length){ list.innerHTML='<p class="muted">No active work orders - submit one from the Citizen tab.</p>'; return; }
+    list.innerHTML=act.map(function(t){
+      var od=t.breached?' <span class="badge" style="background:#7f1d1d;color:#fca5a5">OVERDUE</span>':'';
+      var dup=t.possible_duplicate_of?' <span class="muted" style="font-size:11px">(dup of #'+t.possible_duplicate_of+')</span>':'';
+      var B='<button class="btn" data-act="assign" data-id="'+t.id+'">Assign</button>';
+      var ST='<button class="btn" data-act="start" data-id="'+t.id+'">Start work</button>';
+      var FX='<button class="btn green" data-act="fix" data-id="'+t.id+'" data-lat="'+t.geo_lat+'" data-lon="'+t.geo_lon+'" data-cat="'+esc(t.category||"")+'">Mark Fixed</button>';
+      var RJ='<button class="btn red" data-act="reject" data-id="'+t.id+'">Reject</button>';
+      var AU=' <button class="btn ghost" data-act="audit" data-id="'+t.id+'">Audit</button>';
+      var DP=' <button class="btn ghost" data-act="dispute" data-id="'+t.id+'">Dispute (citizen)</button>';
+      var btns="";
+      if(t.status==="open") btns=B+RJ;
+      else if(t.status==="assigned") btns=ST+FX+RJ;
+      else if(t.status==="in_progress") btns=FX+RJ;
+      else if(t.status==="awaiting_otp") btns='<span class="muted">Awaiting citizen OTP</span>'+DP;
+      else if(t.status==="reopened") btns='<button class="btn" data-act="assign" data-id="'+t.id+'">Re-assign</button>'+RJ;
+      btns+=AU;
+      return '<div class="tkt" style="border-left-color:'+(t.breached?"#ef4444":"#f59e0b")+'">'+
+        '<div class="row" style="justify-content:space-between"><b>'+esc(t.wo_number||("#"+t.id))+' · '+esc(t.category_label||t.category||"")+'</b><span>'+_statusBadge(t.status)+' '+_sevBadge(t.severity)+od+'</span></div>'+
+        '<div class="muted" style="margin:4px 0;font-size:12px">'+esc((t.description||"").slice(0,70))+' · age '+t.age_hours+'h · geo '+Number(t.geo_lat).toFixed(4)+','+Number(t.geo_lon).toFixed(4)+' '+dup+'</div>'+
+        '<div class="row" style="margin-top:6px">'+btns+'</div></div>';
+    }).join("");
+    Array.prototype.forEach.call(list.querySelectorAll("[data-act]"),function(b){ b.onclick=function(){
+      var a=b.getAttribute("data-act"), id=+b.getAttribute("data-id");
+      if(a==="assign")assignTicket(id); else if(a==="start")startWork(id); else if(a==="reject")rejectTicket(id);
+      else if(a==="fix")openFixModal(id,+b.getAttribute("data-lat"),+b.getAttribute("data-lon"),b.getAttribute("data-cat"));
+      else if(a==="audit")showAudit(id); else if(a==="dispute")disputeTicket(id); }; });
+  }).catch(function(e){list.innerHTML="";toast("Agenda load failed: "+e.message,"err");});
+}
+function assignTicket(id){ api("/api/infra/assign",{ticket_id:id,engineer:_jeName()}).then(function(r){ if(r.ok){toast("Assigned to "+_jeName(),"ok");loadJETickets();} else toast((r.data&&r.data.error)||"Assign failed","err"); }).catch(function(e){toast("Assign error: "+e.message,"err");}); }
+function startWork(id){ api("/api/infra/progress",{ticket_id:id,engineer:_jeName()}).then(function(r){ if(r.ok){toast("Work started","ok");loadJETickets();} else toast((r.data&&r.data.error)||"Failed","err"); }).catch(function(e){toast("Error: "+e.message,"err");}); }
+function rejectTicket(id){ var rs=prompt("Reject reason (out-of-jurisdiction / duplicate / invalid):","out of jurisdiction"); if(rs===null)return; api("/api/infra/reject",{ticket_id:id,reason:rs,actor:_jeName()}).then(function(r){ if(r.ok){toast("Ticket rejected","");loadJETickets();} else toast((r.data&&r.data.error)||"Failed","err"); }).catch(function(e){toast("Error: "+e.message,"err");}); }
+function disputeTicket(id){ var rs=prompt("Why is this not fixed?","work not actually done"); if(rs===null)return; api("/api/infra/dispute",{ticket_id:id,reason:rs,actor:"citizen"}).then(function(r){ if(r.ok){toast("Reopened for re-work","");loadJETickets();} else toast((r.data&&r.data.error)||"Failed","err"); }).catch(function(e){toast("Error: "+e.message,"err");}); }
+function showAudit(id){ api("/api/agenda").then(function(r){ var ts=(r.data&&r.data.tickets)||[]; var t=ts.filter(function(x){return x.id===id;})[0]; var b=document.getElementById("audit-body");
+  if(!t){ b.textContent="not found"; document.getElementById("audit-modal").classList.add("open"); return; }
+  var h='<div style="margin-bottom:8px"><b>'+esc(t.wo_number||("#"+t.id))+'</b> '+_statusBadge(t.status)+' '+_sevBadge(t.severity)+(t.breached?' <span class="badge" style="background:#7f1d1d;color:#fca5a5">OVERDUE</span>':'')+'</div><div style="border-left:2px solid #334155;padding-left:14px">';
+  (t.audit||[]).forEach(function(e){ h+='<div style="margin-bottom:8px"><div style="font-size:11px;color:#64748b">'+esc(e.ts)+'</div><div style="font-size:13px"><b>'+esc(e.actor)+'</b> · '+esc(e.event)+(e.detail?' <span class="muted">- '+esc(String(e.detail).slice(0,90))+'</span>':"")+'</div></div>'; });
+  h+='</div>'; b.innerHTML=h; document.getElementById("audit-modal").classList.add("open"); }).catch(function(e){toast("Audit load failed: "+e.message,"err");}); }
+function openFixModal(id,lat,lon,cat){ window._fixCtx={id:id,cat:cat||null};
+  document.getElementById("modal-ticket-id").value=id; document.getElementById("fix-lat").value=lat; document.getElementById("fix-lon").value=lon;
+  var ap=document.getElementById("fix-afterphoto"); if(ap)ap.value="";
+  var dd=document.getElementById("fix-dist"); if(dd)dd.textContent="Stand at the repair site; the system checks your GPS is within the category geofence of the complaint.";
+  document.getElementById("fix-otp-area").style.display="none"; document.getElementById("fix-modal").classList.add("open"); }
+function submitFix(){ var id=document.getElementById("modal-ticket-id").value; var ap=document.getElementById("fix-afterphoto");
+  fileToDataURL(ap||{files:[]},function(photo){
+    api("/api/infra/fix",{ticket_id:Number(id),new_lat:parseFloat(document.getElementById("fix-lat").value)||0,new_lon:parseFloat(document.getElementById("fix-lon").value)||0,fix_photo:photo,citizen_mobile:document.getElementById("fix-mobile").value,engineer:_jeName()}).then(function(r){
+      var dd=document.getElementById("fix-dist");
+      if(r.ok&&r.data&&r.data.otp_preview){ document.getElementById("fix-otp-area").style.display="block"; if(dd)dd.innerHTML='<span style="color:#4ade80">Site verified. OTP issued: '+esc(r.data.otp_preview)+'</span>'; toast("Fix verified at site","ok"); }
+      else if(r.data&&r.data.error==="GEO_MISMATCH"){ if(dd)dd.innerHTML='<span style="color:#f87171">You are '+r.data.distance_m+' m from the complaint; must be within '+r.data.required_m+' m. Move to the site and retry.</span>'; toast("Geo mismatch","err"); }
+      else { toast((r.data&&r.data.error)||"Fix failed","err"); }
+    }).catch(function(e){toast("Fix error: "+e.message,"err");}); }); }
+function submitClose(){ var id=document.getElementById("modal-ticket-id").value;
+  api("/api/infra/close",{ticket_id:Number(id),otp:document.getElementById("fix-otp").value.trim()}).then(function(r){ if(r.ok){toast("Ticket closed (citizen-verified)","ok");closeFixModal();loadJETickets();} else toast((r.data&&r.data.error)||"Invalid OTP","err"); }).catch(function(e){toast("Close error: "+e.message,"err");}); }
+function loadAgenda(){ api("/api/agenda").then(function(r){ var d=r.data||{}; var ts=d.tickets||[], ap=d.applications||[];
+  var active=ts.filter(function(t){return t.status!=="closed"&&t.status!=="rejected";});
+  var breached=ts.filter(function(t){return t.breached;});
+  var closed=ts.filter(function(t){return t.status==="closed";}).length;
+  var rejected=ts.filter(function(t){return t.status==="rejected";}).length;
+  var so=document.getElementById("stat-open-count"); if(so)so.textContent=active.length;
+  var sr=document.getElementById("stat-resolved-count"); if(sr)sr.textContent=closed;
+  var spa=document.getElementById("stat-pending-apps"); if(spa)spa.textContent=ap.length;
+  var h=""; if(breached.length) h+='<div class="card" style="border-left:3px solid #ef4444;background:#0f172a"><b style="color:#fca5a5">'+breached.length+' OVERDUE work order(s)</b> <span class="muted">past SLA - escalate first.</span></div>';
+  h+="<h4>Work orders</h4>"+ts.map(function(t){return '<div class="tkt'+(t.status==="closed"?" closed":"")+'" style="border-left-color:'+(t.breached?"#ef4444":(t.status==="closed"?"#22c55e":"#f59e0b"))+'">'+esc(t.wo_number||("#"+t.id))+' · '+esc((t.description||"").slice(0,46))+' '+_statusBadge(t.status)+' '+_sevBadge(t.severity)+(t.breached?' <span class="badge" style="background:#7f1d1d;color:#fca5a5">OVERDUE</span>':'')+'</div>';}).join("");
+  h+="<h4>Scheme applications</h4>"+(ap.length?ap.map(function(a){return '<div class="tkt">'+esc(a.scheme_name)+' '+esc(a.reg_id_generated||a.reg_id_format||"-")+' <span class="badge closed">'+esc(a.status||a.bot_status||"")+'</span></div>';}).join(""):'<p class="muted">none yet</p>');
+  var el=document.getElementById("agenda-items-list"); if(el)el.innerHTML=h;
+  drawChart(active.length,breached.length,closed,rejected,ap.length); }).catch(function(e){toast("Agenda failed: "+e.message,"err");}); }
+function drawChart(active,breached,closed,rejected,apps){ if(typeof Chart==="undefined")return; var ctx=document.getElementById("agendaChart"); if(!ctx)return;
+  if(window._chart2)window._chart2.destroy();
+  window._chart2=new Chart(ctx,{type:"doughnut",data:{labels:["Active","Overdue","Resolved","Rejected","Applications"],datasets:[{data:[active,breached,closed,rejected,apps],backgroundColor:["#f59e0b","#ef4444","#22c55e","#94a3b8","#60a5fa"]}]},options:{plugins:{legend:{labels:{color:"#cbd5e1"}}}}}); }
+window.addEventListener("DOMContentLoaded",function(){ try{infraInit();}catch(e){ if(window.console)console.error("infraInit",e);} });
+/* ===== end FENCE3-INFRA-UI ===== */
+
+</script>
+</body></html>

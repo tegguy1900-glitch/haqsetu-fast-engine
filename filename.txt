@@ -1,0 +1,139 @@
+Here are the exact, safe prompts for Bricks 8 through 20. 
+
+**CRITICAL RULES FOR SUCCESS:**
+1.  **Paste them ONE AT A TIME.** Wait for the AI to finish and show the `>` prompt before pasting the next one.
+2.  **If the AI asks to rewrite `village/server.py` from scratch, say NO.** It should only *append* or *import*.
+3.  **If the AI creates a demo script that starts a server and hangs, say NO.** The demo script must just test the logic and exit immediately.
+
+---
+
+### BRICK 8: QR Code & Public Status (Paste this now)
+```text
+You are in ~/Downloads/project1. 
+Task: Implement Brick 8 (QR Code & Public Status).
+Rules: 
+1. Do NOT rewrite village/server.py from scratch. ONLY append the new route to the very end of the file. Keep the existing http.server structure. Do NOT switch to Flask.
+2. Create a new file `core/qr_status.py` with a function `get_status_html(case_id)` that returns a simple HTML string.
+3. In `village/server.py`, import this function and add a route `/status` that calls it.
+4. Create `core/run_qr_demo.py`. It must import `get_status_html`, test it with a dummy ID, print "qr_code PASSED", and exit immediately. Do NOT start a web server in the demo script.
+5. Run `./run_gates.sh`. If it passes, append "qr_code GREEN" to `.agent/progress.txt` and commit. If it fails, repair ONCE.
+```
+
+### BRICK 9: PMFBY 72-Hour Clock (Paste after Brick 8 finishes)
+```text
+Task: Implement Brick 9 (PMFBY Crop Loss Clock).
+Rules:
+1. Do NOT rewrite village/server.py. ONLY append.
+2. Create `core/pmfby.py` with a function `handle_crop_loss(text)` that returns a dict with `clock_hours: 72` and an email draft string.
+3. In `village/server.py`, import it and add a route `/pmfby`.
+4. Create `core/run_pmfby_demo.py`. It must import `handle_crop_loss`, test it, print "pmfby PASSED", and exit.
+5. Run `./run_gates.sh`. If it passes, append "pmfby_crop_loss GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 10: Meeting Transcriber (Paste after Brick 9 finishes)
+```text
+Task: Implement Brick 10 (Meeting Transcriber).
+Rules:
+1. Do NOT rewrite village/server.py. ONLY append.
+2. Create `core/meeting.py` with a function `process_transcript(text)` that returns a dict with `complaints`, `promises`, and `summary`.
+3. In `village/server.py`, import it and add a route `/meeting`.
+4. Create `core/run_meeting_demo.py`. It must import `process_transcript`, test it with a dummy string, print "meeting_transcriber PASSED", and exit.
+5. Run `./run_gates.sh`. If it passes, append "meeting_transcriber GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 11: UI Update (Paste after Brick 10 finishes)
+```text
+Task: Implement Brick 11 (UI Update).
+Rules:
+1. Edit `web_demo/index.html`. Add a button for "Crop Loss" and a section for "Meeting Upload". Do NOT delete any existing HTML. Just append the new sections before the closing </body> tag.
+2. Create `core/run_ui_demo.py`. It must read `web_demo/index.html`, check if it contains the string "Crop Loss", print "ui_update PASSED", and exit.
+3. Run `./run_gates.sh`. If it passes, append "ui_update GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 12: Master Demo Script (Paste after Brick 11 finishes)
+```text
+Task: Implement Brick 12 (Master Demo).
+Rules:
+1. Create `core/run_master_demo.py`. It must import the functions from `core/qr_status.py`, `core/pmfby.py`, and `core/meeting.py`. It must run them sequentially and print "master_demo PASSED" if all succeed.
+2. Run `./run_gates.sh`. If it passes, append "master_demo GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 13: OTP & Mock SMS (Paste after Brick 12 finishes)
+```text
+Task: Implement Brick 13 (OTP & SMS).
+Rules:
+1. Do NOT rewrite village/server.py. ONLY append.
+2. Create `core/otp.py` with functions `generate_otp()` (returns 4-digit string) and `verify_otp(otp)` (returns bool).
+3. In `village/server.py`, import it and add a route `/otp`.
+4. Create `core/run_otp_demo.py`. It must test the functions, print "otp_sms PASSED", and exit.
+5. Run `./run_gates.sh`. If it passes, append "otp_sms_alerts GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 14: District Dashboard (Paste after Brick 13 finishes)
+```text
+Task: Implement Brick 14 (District Dashboard).
+Rules:
+1. Do NOT rewrite village/server.py. ONLY append.
+2. Create `core/dashboard.py` with a function `get_stats()` that returns a dict with dummy stats (Total Cases: 100, Open: 20).
+3. In `village/server.py`, import it and add a route `/dashboard`.
+4. Create `core/run_dashboard_demo.py`. It must test the function, print "district_dashboard PASSED", and exit.
+5. Run `./run_gates.sh`. If it passes, append "district_dashboard GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 15: Village Simulator (Paste after Brick 14 finishes)
+```text
+Task: Implement Brick 15 (Village Simulator).
+Rules:
+1. Create `core/simulator.py` with a list of 10 dummy citizen inputs and a function `run_sim()` that processes them and returns a pass/fail list.
+2. Create `core/run_simulator_demo.py`. It must call `run_sim()`, print "village_simulator PASSED", and exit.
+3. Run `./run_gates.sh`. If it passes, append "village_simulator GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 16: LLM Client (Paste after Brick 15 finishes)
+```text
+Task: Implement Brick 16 (LLM Client).
+Rules:
+1. Create `core/llm_client.py` with a function `ask_llm(prompt)` that uses `urllib.request` to POST to `http://localhost:11434/api/generate` with model `qwen2.5-coder:14b`. It must return the response text.
+2. Create `core/run_llm_demo.py`. It must call `ask_llm("Hello")`, print "llm_client PASSED", and exit. (Note: It's okay if this fails if Ollama is off, just make sure the code is syntactically correct).
+3. Run `./run_gates.sh`. If it passes, append "llm_client GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 17: Multi-Agent Router (Paste after Brick 16 finishes)
+```text
+Task: Implement Brick 17 (Multi-Agent).
+Rules:
+1. Create `core/agents.py` with three functions: `triage(text)`, `legal(intent)`, `scheduler(rules)`. They should return dummy structured data.
+2. Create `core/run_agents_demo.py`. It must test the three functions, print "multi_agent PASSED", and exit.
+3. Run `./run_gates.sh`. If it passes, append "multi_agent GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 18: Vision Processor (Paste after Brick 17 finishes)
+```text
+Task: Implement Brick 18 (Vision Processor).
+Rules:
+1. Create `core/vision.py` with a function `analyze_photo(path)` that returns a dummy dict with `gps: [28.6, 77.2]` and `timestamp: "now"`.
+2. Create `core/run_vision_demo.py`. It must test the function, print "vision_processor PASSED", and exit.
+3. Run `./run_gates.sh`. If it passes, append "vision_processor GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 19: Offline Sync (Paste after Brick 18 finishes)
+```text
+Task: Implement Brick 19 (Offline Sync).
+Rules:
+1. Create `mesh/offline_queue.py` with functions `enqueue(data)` and `flush()` that read/write to a local `queue.jsonl` file.
+2. Create `core/run_sync_demo.py`. It must test enqueue and flush, print "offline_sync PASSED", and exit.
+3. Run `./run_gates.sh`. If it passes, append "offline_sync GREEN" to `.agent/progress.txt` and commit.
+```
+
+### BRICK 20: Predictive Analytics (Paste after Brick 19 finishes)
+```text
+Task: Implement Brick 20 (Predictive Analytics).
+Rules:
+1. Do NOT rewrite village/server.py. ONLY append.
+2. Create `core/predict.py` with a function `predict_load()` that returns a dummy projection dict.
+3. In `village/server.py`, import it and add a route `/predict`.
+4. Create `core/run_predict_demo.py`. It must test the function, print "predictive_analytics PASSED", and exit.
+5. Run `./run_gates.sh`. If it passes, append "predictive_analytics GREEN" to `.agent/progress.txt` and commit.
+```
+
+**Start with Brick 8 now.** Paste it, hit Enter, and wait for the `>` prompt. You've got this!

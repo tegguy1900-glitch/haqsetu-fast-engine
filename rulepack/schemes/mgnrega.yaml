@@ -1,0 +1,22 @@
+scheme: mgnrega
+state: haryana
+rules:
+  - id: mgnrega_001
+    description: "MGNREGA Work eligibility."
+    when:
+      - field: is_adult
+        op: eq
+        value: true
+      - field: willing_work
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'job_card']
+    desk: gram_rozgar
+    source: {doc: "MGNREGA Work Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

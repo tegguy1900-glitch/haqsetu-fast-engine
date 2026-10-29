@@ -1,0 +1,21 @@
+scheme: encroachment
+state: haryana
+rules:
+  - id: encroachment_001
+    description: "Encroachment grievance."
+    when:
+      - field: encroachment_seen
+        op: eq
+        value: true
+    outcome: verify
+    documents: []
+    desk: tehsil
+    clock_hours: 72
+    contact: "Grievance Officer"
+    source: {doc: "Civic Guidelines", clause: "SLA", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

@@ -1,0 +1,19 @@
+scheme: agri_infra
+state: haryana
+rules:
+  - id: agri_infra_001
+    description: "Agri Infra Fund eligibility."
+    when:
+      - field: is_farmer
+        op: eq
+        value: true
+    outcome: include
+    documents: ['project_report', 'aadhaar']
+    desk: bank
+    source: {doc: "Agri Infra Fund Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

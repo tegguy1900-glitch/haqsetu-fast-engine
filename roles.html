@@ -1,0 +1,63 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HaqSetu Roles</title><style>
+body{margin:0;font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#222}
+.v{max-width:720px;margin:0 auto;padding:20px}
+.card{background:#fff;border-radius:10px;padding:18px;margin:10px 0;box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.led{background:#000;color:#0f0;font-family:monospace;padding:20px;border-radius:10px}
+.dot{display:inline-block;width:26px;height:26px;border-radius:50%;margin:6px}
+.red{background:#f00;box-shadow:0 0 14px #f00}.amber{background:#fa0;box-shadow:0 0 14px #fa0}.green{background:#0c0;box-shadow:0 0 14px #0c0}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:8px;font-size:13px;text-align:left}
+h1{font-size:20px}.big{font-size:24px;font-weight:bold}
+.btn{background:#000080;color:#fff;border:none;padding:10px 16px;border-radius:6px;cursor:pointer}
+.warn{background:#fef3c7;padding:10px;border-radius:8px;font-size:13px}
+</style></head><body><div id="app" class="v">Loading…</div>
+<script>
+const q=new URLSearchParams(location.search),role=q.get('role')||'panchayat',cs=q.get('case')||'';
+const COL={open:'red',progress:'amber',breached:'red',closed:'green'};
+function tick(el,dl){const D=new Date(dl);setInterval(()=>{const ms=D-Date.now();
+ el.textContent=ms<=0?'⏰ SLA BREACHED — auto-escalated to next officer':`⏳ ${Math.floor(ms/864e5)}d ${Math.floor(ms/36e5)%24}h ${Math.floor(ms/6e4)%60}m ${Math.floor(ms/1e3)%60}s left`;},1000);}
+async function load(){const d=await(await fetch('/api/role?role='+role+'&case='+cs)).json();const app=document.getElementById('app');
+if(role==='villager'){const c=d.case||{};
+ app.innerHTML=`<div class="card"><h1>🌉 HaqSetu — your case ${c.case||''}</h1>
+ <p class="big">${({open:'🔴 Open — a named owner has it',progress:'🟡 In progress — public clock running',breached:'🔴 Overdue — auto-escalated above the Panchayat',closed:'🟢 Closed with confirmation'})[c.state]||'—'}</p>
+ ${c.deadline&&!c.closed?'<p class="big" id="clk"></p>':''}
+ <p><b>Subject:</b> ${c.subject||(c.can||[]).join(', ')||(c.civic||[]).join(', ')||'—'}</p>
+ <p><b>Next step:</b> ${c.evidence?'Evidence locked; closure needs the fixed-site photo + your OTP.':c.state==='closed'?'Closed with confirmation. Thank you.':'Bring the listed documents to the named desk; the facilitator reads your slip back.'}</p>
+ <button class="btn" onclick="appeal()">⬆️ One-tap appeal / self-escalate (slip number)</button>
+ <p class="warn">Privacy: ${d.privacy}. If the AI was ever unsure it abstained and a human decided — the machine never denies.</p></div>`;
+ if(c.deadline&&!c.closed)tick(document.getElementById('clk'),c.deadline);
+ if(q.get('t')) citizenDevice();}
+else if(role==='panchayat'){
+ app.innerHTML=`<div class="led"><h1 style="color:#0f0">GRAM PANCHAYAT BOARD — LIVE FROM THE LEDGER</h1>
+ <div style="font-size:13px">🔴 open/stalled · 🟡 in-progress/escalated · 🟢 closed-confirmed</div>
+ <div>${d.cases.map(c=>`<span class="dot ${COL[c.state]}" title="${c.case}"></span>`).join('')||'<i>no cases yet</i>'}</div>
+ <table style="background:#000;color:#0f0"><tr><th style="color:#0f0">case</th><th style="color:#0f0">GP</th><th style="color:#0f0">state</th><th style="color:#0f0">pending at</th><th style="color:#0f0">SLA</th></tr>
+ ${d.cases.map(c=>`<tr style="color:#0f0"><td>${c.case}</td><td>${c.gp}</td><td>${c.state}</td><td>${c.pending}</td><td>${c.sla||'—'}d</td></tr>`).join('')}</table>
+ <p style="color:#fa0">🏛️ Next meeting agenda: ${d.cases.flatMap(c=>c.civic).join(', ')||'none'}</p></div>`;}
+else if(role==='sdm'){
+ app.innerHTML=`<h1>SDM Dashboard (Sub-Division)</h1>
+ <table><tr><th>GP</th><th>open</th><th>progress</th><th>closed</th><th>breached</th><th>pending@Panchayat</th><th>pending@other office</th></tr>
+ ${d.gps.map(g=>`<tr><td>${g.gp}</td><td>${g.open}</td><td>${g.progress}</td><td>${g.closed}</td><td>${g.breached}</td><td>${g.p}</td><td>${g.o}</td></tr>`).join('')||'<tr><td colspan=7>No cases yet.</td></tr>'}</table>
+ <h2>Auto-escalations (SLA breach, evidence attached, no complaint needed)</h2>
+ ${d.escalations.length?d.escalations.map(c=>`<div class="card">⬆️ ${c.case} (${c.gp}) — ${c.subject||(c.civic||[]).join(', ')} — breached, sent to next named officer</div>`).join(''):'<p>None. Zero silent drops by design.</p>'}`;}
+else{
+ app.innerHTML=`<h1>DM Dashboard (District) — counts only, no names, no audio (Sec 3.9)</h1>
+ <div class="card">Intakes <span class="big">${d.n_intake}</span> · Abstains <span class="big">${d.n_abstain}</span> · Abstention rate <span class="big">${(d.abstain_rate*100).toFixed(1)}%</span><br><small>Abstention is a designed, measured outcome — never a dead end.</small></div>
+ <table><tr><th>category</th><th>count</th></tr>${Object.entries(d.counts).map(([k,v])=>`<tr><td>${k.replace(/_/g,' ')}</td><td>${v}</td></tr>`).join('')||'<tr><td colspan=2>No data yet.</td></tr>'}
+ ${d.merged?`<tr><td><i>merged small cells (&lt;5, privacy)</i></td><td>${d.merged}</td></tr>`:''}</table>
+ <h2>Bottleneck heat map — STAGED sample, labelled (Sec 7)</h2>
+ <table><tr><th>institution</th><th>median days (Kaplan-Meier)</th></tr>${(d.staged||[]).map(s=>`<tr><td>${s.inst}</td><td>${s.median_days}</td></tr>`).join('')||'<tr><td colspan=2>unavailable</td></tr>'}</table>`;}
+}
+function citizenDevice(){
+ fetch('/device/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:cs,token:q.get('t')})});
+ setInterval(async()=>{try{const o=await(await fetch('/otp/mine?case='+cs+'&token='+q.get('t'))).json();
+  let b=document.getElementById('otpbox');
+  if(o.otp&&!o.used){if(!b){b=document.createElement('div');b.id='otpbox';b.className='card';document.getElementById('app').appendChild(b);}
+   b.innerHTML=`<h2>🔐 Your closure OTP</h2><p class="big">${o.otp}</p><button class="btn" onclick="confirmClose()">I confirm the work is done — send OTP</button>`;}
+  if(o.otp&&o.used&&b){b.innerHTML='<div class="alert ok" style="background:#dcfce7;color:#166534;padding:10px;border-radius:6px">✅ Closure confirmed by you. Recorded in the ledger.</div>';}}catch(e){}},4000);}
+async function confirmClose(){await fetch('/otp/confirm',{method:'POST',headers:{'Content-Type':'application/json'},
+ body:JSON.stringify({case:cs,token:q.get('t')||''})});}
+async function appeal(){const r=await(await fetch('/api/appeal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:cs})})).json();
+ alert('Appeal logged into the ledger. Receipt '+(r.receipt||'').slice(0,16)+'…');}
+load();
+</script></body></html>

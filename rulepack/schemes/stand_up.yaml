@@ -1,0 +1,19 @@
+scheme: stand_up
+state: haryana
+rules:
+  - id: stand_up_001
+    description: "Stand Up India eligibility."
+    when:
+      - field: is_sc_st_woman
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'project_report']
+    desk: bank
+    source: {doc: "Stand Up India Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

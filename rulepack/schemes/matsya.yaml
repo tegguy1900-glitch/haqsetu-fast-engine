@@ -1,0 +1,19 @@
+scheme: matsya
+state: haryana
+rules:
+  - id: matsya_001
+    description: "Matsya Sampada eligibility."
+    when:
+      - field: is_fisher
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'license']
+    desk: fisheries_dept
+    source: {doc: "Matsya Sampada Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

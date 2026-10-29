@@ -1,0 +1,19 @@
+scheme: nfsa_ration
+state: haryana
+rules:
+  - id: nfsa_ration_001
+    description: "NFSA Ration eligibility."
+    when:
+      - field: is_bpl
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'income_cert']
+    desk: food_supply
+    source: {doc: "NFSA Ration Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

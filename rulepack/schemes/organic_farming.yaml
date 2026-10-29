@@ -1,0 +1,22 @@
+scheme: organic_farming
+state: haryana
+rules:
+  - id: organic_farming_001
+    description: "Organic Farming eligibility."
+    when:
+      - field: is_farmer
+        op: eq
+        value: true
+      - field: wants_organic
+        op: eq
+        value: true
+    outcome: include
+    documents: ['land_records']
+    desk: agri_dept
+    source: {doc: "Organic Farming Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

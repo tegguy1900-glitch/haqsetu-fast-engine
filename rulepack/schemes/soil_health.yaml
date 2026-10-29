@@ -1,0 +1,19 @@
+scheme: soil_health
+state: haryana
+rules:
+  - id: soil_health_001
+    description: "Soil Health Card eligibility."
+    when:
+      - field: is_farmer
+        op: eq
+        value: true
+    outcome: include
+    documents: ['land_records']
+    desk: agri_dept
+    source: {doc: "Soil Health Card Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

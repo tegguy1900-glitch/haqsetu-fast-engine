@@ -1,0 +1,22 @@
+scheme: kanya_vidhya
+state: haryana
+rules:
+  - id: kanya_vidhya_001
+    description: "Kanya Vidhya Dhan eligibility."
+    when:
+      - field: is_girl
+        op: eq
+        value: true
+      - field: passed_12th
+        op: eq
+        value: true
+    outcome: include
+    documents: ['marksheet', 'aadhaar']
+    desk: education_dept
+    source: {doc: "Kanya Vidhya Dhan Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

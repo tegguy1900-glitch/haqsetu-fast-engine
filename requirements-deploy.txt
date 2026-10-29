@@ -1,0 +1,5 @@
+scikit-learn
+pandas
+fpdf2
+pytesseract
+Pillow

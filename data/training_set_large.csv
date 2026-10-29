@@ -1,0 +1,37 @@
+text,intent
+Retirement benefit scheme registration,OLD_AGE_PENSION
+Sarak par bada gaddha hai accident hogaya,INFRA_BROKEN
+Vruddh avastha bhatta chahiye,OLD_AGE_PENSION
+Widow certificate ke liye kya karun,VIDHWA_PENSION
+Handpump toot gaya paani nahi aa raha,INFRA_BROKEN
+Gaon mein koi work nahi mil raha hai,MGNREGA
+Drainage overflow causing smell,INFRA_BROKEN
+Need work under Mahatma Gandhi National Rural Employment Guarantee Act,MGNREGA
+Dependent spouse welfare scheme,VIDHWA_PENSION
+Main {name} hoon kaam dhund raha hoon,MGNREGA
+Husband expired wife pension claim,VIDHWA_PENSION
+Mera pati mar gaya hai ab mujhe kaise guzara karna hai,VIDHWA_PENSION
+Job card banwana hai MGNREGA ke liye,MGNREGA
+Age pension application submit karo,OLD_AGE_PENSION
+Bridge railing broken dangerous crossing,INFRA_BROKEN
+Road damaged near school area,INFRA_BROKEN
+I want employment under MGNREGA act,MGNREGA
+Elderly care subsidy needed,OLD_AGE_PENSION
+Power cut frequent in our colony,INFRA_BROKEN
+Patni ki mrityu ke baad alimony chahiye,VIDHWA_PENSION
+Unemployment relief scheme apply karna hai,MGNREGA
+Meri pension ruki hui hai,OLD_AGE_PENSION
+Mujhe budhape ki pension deni hai,OLD_AGE_PENSION
+Senior citizen allowance apply karna hai,OLD_AGE_PENSION
+Water pipeline burst in ward 4,INFRA_BROKEN
+Spouse deceased financial assistance required,VIDHWA_PENSION
+Public toilet broken cleaning needed,INFRA_BROKEN
+Pati ki death ho gayi ab vidhwa pension chahiye,VIDHWA_PENSION
+Kanya vivah ke baad patni ka nirvahana,VIDHWA_PENSION
+My husband died I need widow support,VIDHWA_PENSION
+Mujhe job chahiye sarkari scheme se,MGNREGA
+Vidhva bhatta prapt karna hai,VIDHWA_PENSION
+Old age support fund claim karna hai,OLD_AGE_PENSION
+Street light jalna band hai raat ko andhera,INFRA_BROKEN
+Grievance register karna hai infrastructure issue,INFRA_BROKEN
+Rozgar mangta hoon gaon walo ke liye,MGNREGA

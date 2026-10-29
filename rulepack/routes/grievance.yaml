@@ -1,0 +1,26 @@
+scheme: grievance
+state: haryana
+rules:
+  - id: gr_001
+    description: "Citizen files a grievance regarding denial or delay of any welfare scheme benefit."
+    when:
+      - field: grievance_type
+        op: in
+        value: ["pension_delay", "ration_denial", "payment_failure", "other"]
+    outcome: include
+    documents: [aadhaar, scheme_application_receipt]
+    desk: csc
+    source:
+      doc: "CPGRAMS (Centralized Public Grievance Redress and Monitoring System) Guidelines"
+      clause: "Category: Welfare Schemes"
+      url: "https://pgportal.gov.in"
+    verified_on: 2026-10-08
+    verified_by: ["Ishaan", "Samyak"]
+    expires_on: 2027-01-06
+    clock_hours: 48
+    contact: "District Grievance Redressal Officer"
+    test_vectors:
+      - input: {grievance_type: "pension_delay"}
+        expect: include
+      - input: {grievance_type: "unknown_issue"}
+        expect: needs_official_decision

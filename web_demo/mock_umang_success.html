@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>UMANG - Application Status</title>
+<style>
+    body { background:#f0f2f5; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
+    .card { background:white; width:400px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1); overflow:hidden; text-align:center; }
+    .header { background:#0056b3; color:white; padding:20px; }
+    .logo { font-size:24px; font-weight:bold; letter-spacing:2px; }
+    .content { padding:30px; }
+    .status-icon { font-size:60px; color:#28a745; margin-bottom:10px; }
+    .ref-box { background:#e9ecef; padding:15px; border-radius:8px; margin:20px 0; font-family:monospace; font-size:18px; }
+    .details { text-align:left; font-size:14px; color:#555; line-height:1.6; }
+    .btn { background:#0056b3; color:white; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; margin-top:20px; }
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="header">
+        <div class="logo">UMANG</div>
+        <small>Unified Mobile Application for New-age Governance</small>
+    </div>
+    <div class="content">
+        <div class="status-icon">✅</div>
+        <h2>Application Submitted</h2>
+        <p>Your request has been received by the Department.</p>
+        
+        <div class="ref-box">
+            Ref No: <span id="umang-ref-no">Loading...</span>
+        </div>
+        
+        <div class="details">
+            <strong>Scheme:</strong> <span id="umang-scheme-name">-</span><br>
+            <strong>Date:</strong> <span id="umang-date">-</span><br>
+            <strong>Status:</strong> Under Process
+        </div>
+        
+        <button class="btn" onclick="alert('Receipt Downloaded')">Download Receipt</button>
+    </div>
+</div>
+</body>
+</html>

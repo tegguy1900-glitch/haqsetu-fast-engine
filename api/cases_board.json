@@ -1,0 +1,20 @@
+[
+  {
+    "case_id": "CASE-1926",
+    "route": "crop_loss",
+    "desk": "Patwari",
+    "waiting_at": "Panchayat",
+    "clock_hours": 72,
+    "opened_at": "2026-10-11T13:20:01.936343",
+    "status": "open"
+  },
+  {
+    "case_id": "CASE-3702",
+    "route": "pension",
+    "desk": "BDO",
+    "waiting_at": "Panchayat",
+    "clock_hours": 48,
+    "opened_at": "2026-10-11T13:20:03.704917",
+    "status": "open"
+  }
+]

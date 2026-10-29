@@ -1,0 +1,509 @@
+#!/usr/bin/env bash
+# Haq Setu repair. Run:  cd ~/Downloads/project1 && bash repair.sh
+# Parsed from DISK by bash, so the heredocs below cannot be shredded by tty paste.
+cd "$(dirname "$0")" 2>/dev/null || true
+source venv/bin/activate 2>/dev/null || true
+
+echo "[dev-reset] clearing project ledger/keys polluted by the mangled run (dev-only; prod NEVER does this)"
+rm -f ledger/chain.db ledger/chain.db-wal ledger/chain.db-shm ledger/chain.jsonl
+rm -rf keys
+
+# =================== ledger/chain.py  (JSONL -> SQLite-WAL; public API IDENTICAL) ===================
+cat > ledger/chain.py <<'PYEOF'
+"""
+Haq Setu - Unified Append-Only Ledger.  STORAGE: SQLite (WAL).  API IDENTICAL to
+the prior JSONL module, so core.event_bus and every proven demo keep working.
+SQLite serializes writers (BEGIN IMMEDIATE kills the read-head-then-insert FORK
+race); WAL lets readers run concurrent with the single writer; append-only
+TRIGGERS make UPDATE/DELETE physically impossible (Never-Forget @ storage layer).
+"""
+import os, json, time, hashlib, re, sqlite3, threading
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey, Ed25519PublicKey
+)
+from cryptography.hazmat.primitives import serialization
+
+CHAIN_FILE = os.environ.get("HAQ_CHAIN", "ledger/chain.jsonl")          # kept for parity
+def _db_path():
+    p = CHAIN_FILE
+    if p.endswith(".jsonl"): return p[:-6] + ".db"
+    if p.endswith(".db"):    return p
+    return p + ".db"
+DB_PATH = _db_path()                       # frozen at IMPORT time from the shell env prefix
+KEY_DIR = os.environ.get("HAQ_KEYS", "keys")
+
+_FORBIDDEN_KEYS = {
+    "name","full_name","citizen_name","phone","mobile","cell","aadhaar",
+    "aadhar","aadhaar_last4","email","address","house_no","gp_address",
+    "ration_card_no","job_card_no","bank_account","ifsc","pan",
+}
+_AADHAAR_RE = re.compile(r"(?<!\d)\d{12}(?!\d)")
+_PHONE_RE   = re.compile(r"(?<!\d)[6-9]\d{9}(?!\d)")
+
+class PiiLeakError(Exception):
+    """Raised when a payload tries to smuggle PII into the public ledger."""
+
+def _scan_pii(obj, path="payload"):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if str(k).strip().lower() in _FORBIDDEN_KEYS:
+                raise PiiLeakError(f"Forbidden PII key '{k}' at {path}")
+            _scan_pii(v, f"{path}.{k}")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            _scan_pii(v, f"{path}[{i}]")
+    elif isinstance(obj, str):
+        if _AADHAAR_RE.search(obj): raise PiiLeakError(f"Aadhaar-like 12-digit number at {path}")
+        if _PHONE_RE.search(obj):   raise PiiLeakError(f"Phone-like 10-digit number at {path}")
+
+def _pem(priv):
+    return priv.private_bytes(serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+def _pub_pem(pub):
+    return pub.public_bytes(serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo)
+
+def load_or_create_keys():
+    os.makedirs(KEY_DIR, exist_ok=True)
+    ppath, kpath = f"{KEY_DIR}/node.pem", f"{KEY_DIR}/node_pub.pem"
+    if os.path.exists(ppath) and os.path.exists(kpath):
+        priv = serialization.load_pem_private_key(open(ppath,'rb').read(), None)
+        pub  = serialization.load_pem_public_key(open(kpath,'rb').read())
+        return priv, pub
+    priv = Ed25519PrivateKey.generate()
+    open(ppath,'wb').write(_pem(priv))
+    open(kpath,'wb').write(_pub_pem(priv.public_key()))
+    os.chmod(ppath, 0o600)
+    return priv, priv.public_key()
+
+def _canonical(event):
+    e = {k: v for k, v in event.items() if k != "signature"}
+    return json.dumps(e, sort_keys=True, separators=(",", ":")).encode()
+def _sha256(b):
+    return hashlib.sha256(b).hexdigest()
+
+_COLS = ("seq","prev_hash","timestamp","actor_role","case_id","event_type",
+         "payload","payload_hash","signature")
+_init_lock = threading.Lock()
+_initialized = set()
+
+def _connect():
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    c = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)  # manual txns
+    c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=10000")
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=FULL")     # crash-safe appends (Never-Forget)
+    return c
+
+def _ensure_schema(c):
+    if DB_PATH in _initialized: return
+    with _init_lock:
+        if DB_PATH in _initialized: return
+        c.execute("""CREATE TABLE IF NOT EXISTS events(
+            seq INTEGER PRIMARY KEY, prev_hash TEXT NOT NULL, timestamp REAL NOT NULL,
+            actor_role TEXT NOT NULL, case_id TEXT NOT NULL, event_type TEXT NOT NULL,
+            payload TEXT NOT NULL, payload_hash TEXT NOT NULL, signature TEXT NOT NULL)""")
+        c.execute("""CREATE TRIGGER IF NOT EXISTS no_update BEFORE UPDATE ON events
+                     BEGIN SELECT RAISE(ABORT,'append-only: UPDATE forbidden'); END""")
+        c.execute("""CREATE TRIGGER IF NOT EXISTS no_delete BEFORE DELETE ON events
+                     BEGIN SELECT RAISE(ABORT,'append-only: DELETE forbidden'); END""")
+        _initialized.add(DB_PATH)
+
+def _row_to_event(row):
+    return {"seq": row["seq"], "prev_hash": row["prev_hash"], "timestamp": row["timestamp"],
+            "actor_role": row["actor_role"], "case_id": row["case_id"],
+            "event_type": row["event_type"], "payload": json.loads(row["payload"]),
+            "payload_hash": row["payload_hash"], "signature": row["signature"]}
+
+def append_event(actor_role, case_id, event_type, payload, priv):
+    _scan_pii(payload)                                  # Never Leak gate (unchanged)
+    c = _connect(); _ensure_schema(c)
+    try:
+        c.execute("BEGIN IMMEDIATE")                    # write lock BEFORE reading head
+        last = c.execute("SELECT * FROM events ORDER BY seq DESC LIMIT 1").fetchone()
+        if last is None:
+            prev, seq = "GENESIS", 0
+        else:
+            prev, seq = _sha256(_canonical(_row_to_event(last))), last["seq"] + 1
+        event = {"seq": seq, "prev_hash": prev, "timestamp": time.time(),
+                 "actor_role": actor_role, "case_id": case_id, "event_type": event_type,
+                 "payload": payload,
+                 "payload_hash": _sha256(json.dumps(payload, sort_keys=True).encode())}
+        event["signature"] = priv.sign(_canonical(event)).hex()
+        c.execute(f"INSERT INTO events({','.join(_COLS)}) VALUES({','.join(':'+k for k in _COLS)})",
+                  {k: (json.dumps(event[k], sort_keys=True) if k == "payload" else event[k])
+                   for k in _COLS})
+        c.execute("COMMIT")
+        return event
+    except Exception:
+        try: c.execute("ROLLBACK")
+        except Exception: pass
+        raise
+    finally:
+        c.close()
+
+def verify_chain(pub):
+    c = _connect(); _ensure_schema(c)
+    rows = c.execute("SELECT * FROM events ORDER BY seq ASC").fetchall()
+    c.close()
+    expected_prev = "GENESIS"
+    for row in rows:
+        ev = _row_to_event(row)
+        if ev["prev_hash"] != expected_prev:
+            return False, ev["seq"], "broken prev_hash link"
+        try:
+            pub.verify(bytes.fromhex(ev["signature"]), _canonical(ev))
+        except Exception:
+            return False, ev["seq"], "bad signature"
+        if _sha256(json.dumps(ev["payload"], sort_keys=True).encode()) != ev["payload_hash"]:
+            return False, ev["seq"], "payload hash mismatch"
+        expected_prev = _sha256(_canonical(ev))
+    return True, None, "ok"
+
+def get_chain():
+    c = _connect(); _ensure_schema(c)
+    rows = c.execute("SELECT * FROM events ORDER BY seq ASC").fetchall()
+    c.close()
+    return [_row_to_event(r) for r in rows]
+PYEOF
+
+# ============== ledger/pii_store.py  (JSONL -> SQLite; public API IDENTICAL) ==============
+cat > ledger/pii_store.py <<'PYEOF'
+"""
+Haq Setu - Encrypted PII Vault.  STORAGE: SQLite (WAL).  API IDENTICAL.
+Old put_pii did read-all -> append -> write-all on JSONL with NO lock; the
+multi-threaded village node could corrupt the vault in-process. SQLite makes
+put_pii one atomic INSERT, erasing that race. Names/phones never reach the chain;
+the ledger stores only an opaque blob_id. Erase-on-closure preserved.
+"""
+import os, json, uuid, sqlite3
+from cryptography.fernet import Fernet
+
+VAULT_FILE = os.environ.get("HAQ_VAULT", "ledger/pii_vault.jsonl")   # kept for parity
+def _db_path():
+    p = VAULT_FILE
+    if p.endswith(".jsonl"): return p[:-6] + ".db"
+    if p.endswith(".db"):    return p
+    return p + ".db"
+DB_PATH = _db_path()
+KEY_FILE = os.environ.get("HAQ_VAULT_KEY", "keys/pii.key")
+
+def _key():
+    os.makedirs(os.path.dirname(KEY_FILE) or ".", exist_ok=True)
+    if not os.path.exists(KEY_FILE):
+        k = Fernet.generate_key(); open(KEY_FILE, "wb").write(k); os.chmod(KEY_FILE, 0o600)
+    return open(KEY_FILE, "rb").read()
+def _fernet(): return Fernet(_key())
+
+def _connect():
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    c = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)
+    c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=10000")
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=FULL")
+    c.execute("""CREATE TABLE IF NOT EXISTS blobs(
+        blob_id TEXT PRIMARY KEY, case_id TEXT NOT NULL, token TEXT NOT NULL)""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_case ON blobs(case_id)")
+    return c
+
+def put_pii(case_id, fields):
+    blob_id = str(uuid.uuid4())
+    token = _fernet().encrypt(json.dumps(fields, sort_keys=True).encode()).decode()
+    c = _connect()
+    try:
+        c.execute("INSERT INTO blobs(blob_id,case_id,token) VALUES(?,?,?)", (blob_id, case_id, token))
+        return blob_id
+    finally:
+        c.close()
+
+def get_pii(blob_id):
+    c = _connect()
+    try:
+        row = c.execute("SELECT token FROM blobs WHERE blob_id=?", (blob_id,)).fetchone()
+    finally:
+        c.close()
+    if row is None: return None
+    return json.loads(_fernet().decrypt(row["token"].encode()))
+
+def erase_pii(case_id):
+    c = _connect()
+    try:
+        cur = c.execute("DELETE FROM blobs WHERE case_id=?", (case_id,))
+        return cur.rowcount
+    finally:
+        c.close()
+PYEOF
+
+# ===================== core/run_wal_migration.py  (the storage proof) =====================
+cat > core/run_wal_migration.py <<'PYEOF'
+"""Storage-layer proof. Run: python -m core.run_wal_migration   (forge via HAQ_WAL_FORGE=1)"""
+import os, sys, json, time, sqlite3, threading
+from core import event_bus
+from ledger import chain as _chain, pii_store as _pii
+
+FAIL = []
+def chk(name, cond, extra=""):
+    print(f"  [{'OK' if cond else 'FAIL'}] {name}{(' :: '+extra) if extra else ''}")
+    if not cond: FAIL.append(name)
+
+def _journal_mode():
+    c = sqlite3.connect(_chain.DB_PATH)
+    try: return c.execute("PRAGMA journal_mode").fetchone()[0]
+    finally: c.close()
+
+def part1():
+    print("\n##### PART 1 : public-API parity #####")
+    for fn in ("load_or_create_keys","verify_chain","append_event","get_chain"):
+        chk(f"chain.{fn} present", callable(getattr(_chain, fn, None)))
+    chk("chain.PiiLeakError present", hasattr(_chain, "PiiLeakError"))
+    for fn in ("put_pii","get_pii","erase_pii"):
+        chk(f"pii.{fn} present", callable(getattr(_pii, fn, None)))
+    event_bus.init()
+    e1 = event_bus.emit("mitra","HS-WAL-1","entitlement_matched",{"schemes":["nsap"],"confidence":0.9})
+    e2 = event_bus.emit("sarpanch","SABHA-WAL","sabha_signed",{"gp":"GP-WAL","meeting_date":"2026-10-21",
+              "minutes_hash":"a"*64,"action_items":[{"owner":"secretary","task":"fix by Friday","deadline_raw":"by Friday"}],
+              "grievances":[],"decisions":[],"funds_mentioned":[]})
+    e3 = event_bus.emit("mitra","HS-WAL-2","civic_intake",{"category":"handpump","ward":4},
+                        pii_fields={"name":"Geeta Devi","phone":"9812345678"})
+    chk("3 cross-pillar events appended", [e1["seq"],e2["seq"],e3["seq"]] == [0,1,2])
+    blob = e3["payload"]["pii_ref"]
+    chk("vault round-trip", _pii.get_pii(blob)["name"] == "Geeta Devi")
+    chk("ledger payload has NO raw PII", "name" not in json.dumps(e3["payload"]) and "9812345678" not in json.dumps(e3["payload"]))
+    ok,_,why = event_bus.verify(); chk("chain verifies after parity writes", ok, why)
+    chk("WAL journal_mode active", _journal_mode() == "wal", _journal_mode())
+
+def part2():
+    print("\n##### PART 2 : append-only triggers (Never-Forget @ storage) #####")
+    c = _chain._connect()
+    try:
+        try:
+            c.execute("UPDATE events SET payload='{}' WHERE seq=0"); upd=False
+        except sqlite3.IntegrityError as ex: upd = "UPDATE forbidden" in str(ex)
+        try:
+            c.execute("DELETE FROM events WHERE seq=0"); dele=False
+        except sqlite3.IntegrityError as ex: dele = "DELETE forbidden" in str(ex)
+        chk("UPDATE on committed row ABORTed", upd)
+        chk("DELETE on committed row ABORTed", dele)
+        chk("row count unchanged after aborted mutations", len(_chain.get_chain()) == 3)
+    finally:
+        c.close()
+
+def part4(T=24):
+    print(f"\n##### PART 4 : {T} contending appends (fork-race kill) #####")
+    base = len(_chain.get_chain())
+    bar = threading.Barrier(T)
+    errs = []
+    def worker(i):
+        try:
+            bar.wait()
+            if i % 2 == 0:
+                event_bus.emit("mitra", f"HS-CONC-{i}", "civic_intake",
+                               {"category":"drain","ward":i}, pii_fields={"name":f"C{i}","phone":f"980000000{i%10}"})
+            else:
+                event_bus.emit("mitra", f"HS-CONC-{i}", "civic_intake", {"category":"road","ward":i})
+        except Exception as ex:
+            errs.append(repr(ex))
+    ths = [threading.Thread(target=worker, args=(i,)) for i in range(T)]
+    [t.start() for t in ths]; [t.join() for t in ths]
+    chk("no thread errored under contention", not errs, str(errs[:2]))
+    ch = _chain.get_chain()
+    seqs = sorted(e["seq"] for e in ch)
+    chk(f"chain grew by exactly {T}", len(ch) == base + T, f"base={base} now={len(ch)}")
+    chk("seqs contiguous 0..N-1 (NO fork / NO dup)", seqs == list(range(len(ch))))
+    linked = all(ch[i]["prev_hash"] == ("GENESIS" if i==0 else _chain._sha256(_chain._canonical(ch[i-1])))
+                 for i in range(len(ch)))
+    chk("hash-chain singly linked end-to-end", linked)
+    ok,_,why = event_bus.verify(); chk("chain verifies after concurrent writes", ok, why)
+    pii_n = sum(1 for i in range(T) if i % 2 == 0)
+    vb = _pii._connect()
+    try: total = vb.execute("SELECT COUNT(*) c FROM blobs").fetchone()["c"]
+    finally: vb.close()
+    chk(f"vault holds all {pii_n} concurrent PII blobs intact", total >= pii_n, f"vault_rows={total}")
+
+def part5():
+    print("\n##### PART 5 : erase-on-closure + final integrity #####")
+    n = _pii.erase_pii("HS-WAL-2")
+    chk("erase_pii removed the closed case's blob", n == 1, f"erased={n}")
+    chk("chain events survive the PII erase (Never-Forget vs right-to-be-forgotten)",
+        any(e["case_id"]=="HS-WAL-2" for e in _chain.get_chain()))
+    ok,_,why = event_bus.verify(); chk("FINAL chain verify ok", ok, why)
+    print(f"  chain_len={len(_chain.get_chain())}  db={_chain.DB_PATH}")
+
+def part3_forge():
+    print("\n##### PART 3 : forged append (bad signature) caught on read #####")
+    event_bus.init()
+    payload = {"category":"handpump","ward":99}
+    ph = _chain._sha256(json.dumps(payload, sort_keys=True).encode())
+    c = _chain._connect(); _chain._ensure_schema(c)
+    try:
+        c.execute("BEGIN IMMEDIATE")
+        c.execute(f"INSERT INTO events({','.join(_chain._COLS)}) VALUES(?,?,?,?,?,?,?,?,?)",
+                  (0,"GENESIS",time.time(),"attacker","HS-FORGE","civic_intake",
+                   json.dumps(payload,sort_keys=True), ph, "deadbeef"*16))
+        c.execute("COMMIT")
+    finally:
+        c.close()
+    pub = _chain.load_or_create_keys()[1]
+    ok, bad, why = _chain.verify_chain(pub)
+    chk("verify_chain REJECTS the forged row", (not ok) and why == "bad signature", f"ok={ok} seq={bad} why={why}")
+    chk("forgery localized to the appended seq", bad == 0)
+
+def main():
+    if os.environ.get("HAQ_WAL_FORGE") == "1":
+        part3_forge()
+    else:
+        part1(); part2(); part4(); part5()
+    print("\n[RESULT]", "WAL MIGRATION GREEN" if not FAIL else f"FAILED: {FAIL}")
+    sys.exit(0 if not FAIL else 1)
+
+if __name__ == "__main__":
+    main()
+PYEOF
+
+# ===== core/run_clock_demo.py  (FIX: escalate+soft isolated into separate processes) =====
+cat > core/run_clock_demo.py <<'PYEOF'
+"""Dual-mode proof of the SLA clock.
+  python -m core.run_clock_demo                 -> orchestrates TWO isolated subprocesses
+                                                   (one per mode, fresh chain each) and
+                                                   prints the policy-gate diff.  exit 0/1.
+  python -m core.run_clock_demo --mode escalate -> runs ONE mode (used by the orchestrator).
+Original bug: main() ran escalate then soft in ONE process on ONE shared chain, so soft
+inherited escalate's breaches, emitted 0, and the diff crashed on StopIteration."""
+import os, sys, json, time
+from core import event_bus, sla_clock as clock
+
+GP, DATE = "GP-CLOCK", "2026-10-21"   # 2026-10-21 is a Wednesday
+
+def _seed():
+    event_bus.init()
+    t1 = event_bus.emit("mitra", "HS-CLOCK-1", "civic_intake",
+                        {"category": "handpump", "ward": 4})["timestamp"]
+    t2 = event_bus.emit("mitra", "HS-CLOCK-2", "civic_intake",
+                        {"category": "drain", "ward": 3})["timestamp"]
+    event_bus.emit("mitra", "HS-CLOCK-3", "civic_intake", {"category": "road", "ward": 1})
+    event_bus.emit("engineer", "HS-CLOCK-3", "civic_closure_verified", {"photo_hash": "ok"})
+    minutes = {"gp": GP, "meeting_date": DATE, "minutes_hash": "deadbeefcafe1234",
+               "decisions": [], "funds_mentioned": [], "grievances": [],
+               "action_items": [
+                   {"owner": "secretary", "task": "I will fix the streetlights in Ward 2 by Friday.",
+                    "deadline_raw": "by Friday"},                 # -> 2026-10-23
+                   {"owner": "sarpanch",  "task": "Arrange water tanker soon.", "deadline_raw": "soon"},                      # -> UNRESOLVABLE
+               ]}
+    event_bus.emit("sarpanch", f"SABHA-{GP}-{DATE}", "sabha_signed", minutes)
+    return max(t1, t2)
+
+def _show(tag, st):
+    print(f"  {tag}: open_civic={st['open_civic']} closed={st['closed_civic']} "
+          f"breached_civic={st['breached_civic']}")
+    print(f"           commitments tracked={st['tracked_commitments']} "
+          f"breached={st['breached_commitments']} fulfilled={st['fulfilled_commitments']} "
+          f"skipped={[s['id'] for s in st['skipped_commitments']]}")
+
+def run(mode):
+    os.environ["HAQ_SLA_MODE"] = mode
+    import importlib; importlib.reload(clock)
+    print(f"\n===================== MODE = {mode.upper()} =====================")
+    latest = _seed()
+    print("[OK] seeded 3 civic (1 closed) + 1 sabha (2 commitments, 1 unresolvable)")
+    _show("before tick", clock.status())
+    future = latest + 100 * 3600          # injectable clock; no signature tampering
+    res = clock.tick(now=future)
+    for w in res["warnings"]:
+        print(w)
+    print(f"[OK] tick(now=+100h) emitted {len(res['emitted'])} sla_breach:")
+    for e in res["emitted"]:
+        p = e["payload"]
+        print(f"     - kind={p['kind']:11s} id={e['case_id']:18s} "
+              f"mode={p['mode']:8s} escalated_to={p['escalated_to']} "
+              f"overdue={p['hours_overdue']}h")
+    _show("after tick ", res["status"])
+    ck = [c for c in res["status"]["tracked_commitments"] if c.endswith("-0")]
+    if ck:
+        clock.fulfill(ck[0], owner="secretary")
+        res2 = clock.tick(now=future)
+        print(f"[OK] after fulfill({ck[0]}): re-tick emitted {len(res2['emitted'])} (idempotent=0 expected)")
+        _show("final      ", res2["status"])
+    else:
+        res2 = res
+    ok, bad, why = event_bus.verify()
+    print(f"[OK] chain verify ok={ok} ({why})  chain_len={len(event_bus.tail(999))}")
+    return res["emitted"]
+
+def _orchestrate():
+    import subprocess, tempfile, shutil
+    print("##### CLOCK (two modes isolated into separate processes) #####")
+    procs, emits = [], {}
+    for mode in ("escalate", "soft"):
+        d = tempfile.mkdtemp(prefix=f"haqclk_{mode}_")
+        emit = os.path.join(d, "emit.json")
+        env = dict(os.environ)
+        env.update({"HAQ_CHAIN": f"{d}/chain.jsonl", "HAQ_VAULT": f"{d}/vault.jsonl",
+                    "HAQ_KEYS": f"{d}/keys", "HAQ_VAULT_KEY": f"{d}/pii.key",
+                    "SDM_DB": f"{d}/sdm.db", "HAQ_OUTBOX": f"{d}/outbox.db",
+                    "HAQ_SLA_MODE": mode})
+        p = subprocess.Popen([sys.executable, "-m", "core.run_clock_demo",
+                              "--mode", mode, "--emit", emit], env=env)
+        procs.append((mode, p, d, emit))
+    rc = 0
+    for mode, p, d, emit in procs:
+        p.wait(); rc |= p.returncode
+    if rc != 0:
+        print(f"[FAIL] a mode subprocess exited nonzero (rc={rc})")
+        for _,_,d,_ in procs: shutil.rmtree(d, ignore_errors=True)
+        sys.exit(1)
+    for mode, _, _, emit in procs:
+        with open(emit) as f: emits[mode] = json.load(f)
+    for _,_,d,_ in procs: shutil.rmtree(d, ignore_errors=True)
+    esc, sof = emits["escalate"], emits["soft"]
+    pe = next((x for x in esc if x["payload"]["kind"] == "civic"), None)
+    ps = next((x for x in sof if x["payload"]["kind"] == "civic"), None)
+    print("\n---------------- POLICY-GATE DIFF (the knob, not a silent choice) ----------------")
+    if pe is None or ps is None:
+        print(f"[FAIL] missing civic breach: escalate={pe is not None} soft={ps is not None}")
+        sys.exit(1)
+    print(f"  escalate -> escalated_to={pe['payload']['escalated_to']!r}  (dashboard RED + upward push)")
+    print(f"  soft     -> escalated_to={ps['payload']['escalated_to']!r}  (dashboard AMBER, no push)")
+    print("  [OK] same event type, same contract; policy carried in payload, flipped by env var")
+    ok = (pe["payload"]["escalated_to"] == "block") and (ps["payload"]["escalated_to"] is None)
+    print("[RESULT]", "CLOCK GREEN" if ok else "CLOCK FAILED")
+    sys.exit(0 if ok else 1)
+
+if __name__ == "__main__":
+    if "--mode" in sys.argv:
+        mode = sys.argv[sys.argv.index("--mode") + 1]
+        emit = sys.argv[sys.argv.index("--emit") + 1] if "--emit" in sys.argv else None
+        em = run(mode)
+        if emit:
+            with open(emit, "w") as f: json.dump(em, f)
+        sys.exit(0)
+    else:
+        _orchestrate()
+PYEOF
+
+echo "########## GATES (each in its own fresh sandbox) ##########"
+GATES=""
+gate () {
+  local label="$1"; shift
+  local d; d="$(mktemp -d /tmp/gate_XXXXXX)"
+  env HAQ_CHAIN="$d/chain.jsonl" HAQ_VAULT="$d/vault.jsonl" HAQ_KEYS="$d/keys" \
+      HAQ_VAULT_KEY="$d/pii.key" SDM_DB="$d/sdm.db" HAQ_OUTBOX="$d/outbox.db" \
+      HAQ_SABHA_PORT=8020 HAQ_SDM_PORT=8110 HAQ_XP_DIR="$d" HAQ_DASH_DIR="$d" \
+      HAQ_B_DIR="$d/b" "$@" 2>&1 | tail -n 5
+  local rc="${PIPESTATUS[0]}"
+  printf '>>> %-12s exit=%s\n' "$label" "$rc"
+  rm -rf "$d"; GATES="$GATES $label=$rc"
+}
+gate "wal"        python -m core.run_wal_migration
+gate "wal-forge"  env HAQ_WAL_FORGE=1 python -m core.run_wal_migration
+gate "clock"      python -m core.run_clock_demo
+gate "xproc"      python -m core.run_xproc_proof
+gate "pillar1"    python -m core.run_pillar1_demo
+gate "sabha"      python -m sabha.run_sabha
+gate "dash"       python -m sdm.run_dashboard_demo
+gate "launch"     python -m core.run_launcher_demo
+echo "########## SUMMARY ##########"
+echo "GATES:$GATES"
+allok=1; for kv in $GATES; do [ "${kv#*=}" = "0" ] || allok=0; done
+[ "$allok" = 1 ] && echo "ALL GATES GREEN :: storage SQLite-WAL, clock isolated, xproc proven, pillars unregressed" || echo "SOME GATE RED :: see exit!=0 above"

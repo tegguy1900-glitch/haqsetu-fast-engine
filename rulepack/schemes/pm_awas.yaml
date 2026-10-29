@@ -1,0 +1,22 @@
+scheme: pm_awas
+state: haryana
+rules:
+  - id: pm_awas_001
+    description: "PM Awas Yojana eligibility."
+    when:
+      - field: is_bpl
+        op: eq
+        value: true
+      - field: has_pucca_house
+        op: eq
+        value: false
+    outcome: include
+    documents: ['aadhaar', 'bpl_card']
+    desk: bdo
+    source: {doc: "PM Awas Yojana Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

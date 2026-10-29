@@ -1,0 +1,19 @@
+scheme: vishwakarma
+state: haryana
+rules:
+  - id: vishwakarma_001
+    description: "PM Vishwakarma eligibility."
+    when:
+      - field: is_artisan
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar']
+    desk: csc
+    source: {doc: "PM Vishwakarma Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

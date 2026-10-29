@@ -1,0 +1,19 @@
+scheme: micro_irrigation
+state: haryana
+rules:
+  - id: micro_irrigation_001
+    description: "Micro Irrigation eligibility."
+    when:
+      - field: is_farmer
+        op: eq
+        value: true
+    outcome: include
+    documents: ['land_records', 'aadhaar']
+    desk: agri_dept
+    source: {doc: "Micro Irrigation Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

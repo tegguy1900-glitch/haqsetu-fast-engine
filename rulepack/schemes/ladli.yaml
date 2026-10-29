@@ -1,0 +1,19 @@
+scheme: ladli
+state: haryana
+rules:
+  - id: ladli_001
+    description: "Ladli Scheme eligibility."
+    when:
+      - field: is_girl_child
+        op: eq
+        value: true
+    outcome: include
+    documents: ['birth_cert', 'aadhaar']
+    desk: woman_child_dept
+    source: {doc: "Ladli Scheme Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

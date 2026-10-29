@@ -1,0 +1,19 @@
+scheme: saubhagya
+state: haryana
+rules:
+  - id: saubhagya_001
+    description: "Saubhagya Bijli eligibility."
+    when:
+      - field: has_electricity
+        op: eq
+        value: false
+    outcome: include
+    documents: ['aadhaar']
+    desk: power_dept
+    source: {doc: "Saubhagya Bijli Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

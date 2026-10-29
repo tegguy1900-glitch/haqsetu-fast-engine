@@ -1,0 +1,22 @@
+scheme: ayushman_bharat
+state: haryana
+rules:
+  - id: ab_001
+    description: "Family in SECC 2011 deprived category gets 5 Lakh health cover."
+    when:
+      - field: is_secc_deprived
+        op: eq
+        value: true
+      - field: has_private_insurance
+        op: eq
+        value: false
+    outcome: include
+    documents: [aadhaar, ration_card]
+    desk: csc
+    source: {doc: "PM-JAY Guidelines", clause: "Entitlement", url: "https://pmjay.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {is_secc_deprived: true, has_private_insurance: false}
+        expect: include

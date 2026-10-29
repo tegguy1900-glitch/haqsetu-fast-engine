@@ -1,0 +1,21 @@
+scheme: pond_cleaning
+state: haryana
+rules:
+  - id: pond_cleaning_001
+    description: "Pond Cleaning grievance."
+    when:
+      - field: pond_polluted
+        op: eq
+        value: true
+    outcome: verify
+    documents: []
+    desk: panchayat
+    clock_hours: 72
+    contact: "Grievance Officer"
+    source: {doc: "Civic Guidelines", clause: "SLA", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

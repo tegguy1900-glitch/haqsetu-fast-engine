@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head><title>MGNREGA Registration</title></head>
+<body style="font-family:sans-serif; padding:20px;">
+<h2>🇳 MGNREGA Job Card Application</h2>
+<form id="regForm">
+    <label>Name:</label><input type="text" id="name"><br>
+    <label>Father's Name:</label><input type="text" id="father_name"><br>
+    <label>Mobile:</label><input type="tel" id="mobile"><br>
+    <label>Aadhaar Last 4:</label><input type="text" id="aadhaar_last4"><br>
+    <label>Village:</label>
+    <select id="village">
+        <option value="ward1">Ward 1 - Rampur</option>
+        <option value="ward4">Ward 4 - Sonpur</option>
+        <option value="ward7">Ward 7 - Lakhisarai</option>
+    </select><br><br>
+    <button type="submit">Submit Application</button>
+</form>
+<div id="result" style="display:none; margin-top:20px; color:green; font-weight:bold;">
+    Success! ID: <span id="app-id"></span>
+</div>
+<script>
+document.getElementById('regForm').onsubmit = function(e){
+    e.preventDefault();
+    const id = 'MG-' + Math.floor(Math.random()*100000);
+    document.getElementById('app-id').innerText = id;
+    document.getElementById('result').style.display = 'block';
+};
+</script>
+</body>
+</html>

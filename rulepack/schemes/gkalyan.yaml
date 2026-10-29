@@ -1,0 +1,19 @@
+scheme: gkalyan
+state: haryana
+rules:
+  - id: gkalyan_001
+    description: "Garib Kalyan Anna eligibility."
+    when:
+      - field: is_bpl
+        op: eq
+        value: true
+    outcome: include
+    documents: ['ration_card']
+    desk: food_supply
+    source: {doc: "Garib Kalyan Anna Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

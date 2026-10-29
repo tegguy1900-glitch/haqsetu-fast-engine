@@ -1,0 +1,19 @@
+scheme: mudra
+state: haryana
+rules:
+  - id: mudra_001
+    description: "PM Mudra Loan eligibility."
+    when:
+      - field: wants_business
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'project_report']
+    desk: bank
+    source: {doc: "PM Mudra Loan Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

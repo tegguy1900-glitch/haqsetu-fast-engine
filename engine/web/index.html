@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HaqSetu Facilitator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-page="facilitator">
+  <header>
+    <h1>HaqSetu Facilitator Screen</h1>
+    <p class="subtitle">
+      Rules, clocks, ledger events, and official action buttons.
+    </p>
+  </header>
+
+  <main class="grid">
+    <section class="panel">
+      <h2>Connection</h2>
+
+      <label>
+        API Base
+        <input id="apiBase" value="http://127.0.0.1:8000" />
+      </label>
+
+      <label>
+        Actor
+        <input id="actor" value="facilitator" />
+      </label>
+
+      <div class="row">
+        <button id="refreshCases">Refresh Cases</button>
+        <a href="public.html" target="_blank">Open Public Board</a>
+      </div>
+
+      <p class="note">
+        Do not enter Aadhaar numbers, names, or other personal data into
+        facts or notes. Use pseudonymous case IDs and event codes only.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Create Case</h2>
+
+      <label>
+        Route
+        <select id="route">
+          <option value="crop_loss">crop_loss</option>
+          <option value="wage_work">wage_work</option>
+          <option value="grievance">grievance</option>
+        </select>
+      </label>
+
+      <label>
+        Facts JSON
+        <textarea id="facts" rows="10">{
+  "crop_loss_percentage": 40,
+  "grievance_type": "pension_delay"
+}</textarea>
+      </label>
+
+      <button id="createCase">Create Case</button>
+    </section>
+
+    <section class="panel panel-wide">
+      <h2>Cases</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Case ID</th>
+              <th>Route</th>
+              <th>Status</th>
+              <th>Route Outcome</th>
+              <th>Updated</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="casesTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel panel-wide">
+      <h2>Case Detail</h2>
+
+      <div id="caseDetail" class="case-detail">
+        Select a case.
+      </div>
+
+      <div class="actions">
+        <button class="action-button pass" data-event="official_pass" data-board="pass" data-prompt="Optional note for Pass:">
+          Pass
+        </button>
+
+        <button class="action-button verify" data-event="verify_requested" data-board="verify" data-prompt="What needs verification?">
+          Verify
+        </button>
+
+        <button class="action-button citizen" data-event="citizen_contacted" data-board="citizen" data-prompt="Citizen contact note:">
+          Citizen
+        </button>
+
+        <button class="action-button reject" data-event="official_reject" data-board="reject" data-require-note="true" data-prompt="Official rejection reason:">
+          Reject
+        </button>
+      </div>
+
+      <p class="note">
+        Reject records an official human decision. The rule engine itself never denies.
+      </p>
+
+      <h3>Events</h3>
+      <div id="caseEvents" class="events"></div>
+    </section>
+  </main>
+
+  <div id="message" class="message"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

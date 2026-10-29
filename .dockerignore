@@ -1,0 +1,13 @@
+venv/
+.git/
+__pycache__/
+*.pyc
+*.log
+data/*.db
+uploads/
+reports/
+cloudflared
+web_demo.bak/
+web.bak/
+haqsetu-v4/
+models/*.pkl

@@ -1,0 +1,22 @@
+scheme: kisan_maan_dhan
+state: haryana
+rules:
+  - id: kisan_maan_dhan_001
+    description: "Kisan Maan Dhan eligibility."
+    when:
+      - field: is_farmer
+        op: eq
+        value: true
+      - field: age
+        op: lte
+        value: 40
+    outcome: include
+    documents: ['aadhaar', 'bank_passbook']
+    desk: csc
+    source: {doc: "Kisan Maan Dhan Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

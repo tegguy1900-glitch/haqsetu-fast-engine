@@ -1,0 +1,19 @@
+scheme: nabard_tractor
+state: haryana
+rules:
+  - id: nabard_tractor_001
+    description: "NABARD Tractor eligibility."
+    when:
+      - field: is_farmer
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'land_records']
+    desk: bank
+    source: {doc: "NABARD Tractor Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

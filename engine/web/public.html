@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HaqSetu Public Board</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-page="public">
+  <header>
+    <h1>HaqSetu Public Board</h1>
+    <p class="subtitle">
+      Pseudonymous case status only. No personal data is displayed.
+    </p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <label>
+        API Base
+        <input id="apiBase" value="http://127.0.0.1:8000" />
+      </label>
+
+      <button id="refreshPublic">Refresh</button>
+    </section>
+
+    <section id="publicBoard" class="public-board"></section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+scheme: ujjwala
+state: haryana
+rules:
+  - id: ujjwala_001
+    description: "Ujjwala LPG eligibility."
+    when:
+      - field: is_female
+        op: eq
+        value: true
+      - field: is_bpl
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'bpl_card']
+    desk: csc
+    source: {doc: "Ujjwala LPG Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

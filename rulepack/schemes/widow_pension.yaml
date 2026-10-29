@@ -1,0 +1,19 @@
+scheme: widow_pension
+state: haryana
+rules:
+  - id: widow_pension_001
+    description: "Widow Pension eligibility."
+    when:
+      - field: is_widow
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'death_cert']
+    desk: bdo
+    source: {doc: "Widow Pension Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

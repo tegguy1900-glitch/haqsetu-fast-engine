@@ -1,0 +1,22 @@
+scheme: post_matric
+state: haryana
+rules:
+  - id: post_matric_001
+    description: "Post-Matric Sch. eligibility."
+    when:
+      - field: is_student
+        op: eq
+        value: true
+      - field: class_gte
+        op: eq
+        value: 11
+    outcome: include
+    documents: ['aadhaar', 'income_cert']
+    desk: education_dept
+    source: {doc: "Post-Matric Sch. Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

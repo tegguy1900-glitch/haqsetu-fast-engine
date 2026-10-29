@@ -1,0 +1,89 @@
+<!doctype html><meta charset=utf-8>
+<title>Haq Setu - SDM Control Board</title>
+<style>
+ :root{--red:#b71c1c;--amber:#e65100;--green:#1b5e20;--slate:#37474f;--bg:#0b1020;--fg:#e8eefc}
+ body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+ header{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid #24304d}
+ header h1{font-size:16px;margin:0;letter-spacing:.5px}
+ .badge{padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
+ .b-red{background:var(--red)}.b-amber{background:var(--amber)}.b-green{background:var(--green)}.b-slate{background:var(--slate)}
+ .ok{color:#7CFC9A}.bad{color:#ff8a80}
+ main{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;padding:16px}
+ section{background:#121a30;border:1px solid #24304d;border-radius:10px;padding:12px}
+ section h2{font-size:13px;margin:0 0 10px;text-transform:uppercase;letter-spacing:1px;color:#9fb3d9}
+ .card{border-left:6px solid var(--slate);background:#0e1530;border-radius:8px;padding:9px 11px;margin-bottom:9px}
+ .card.red{border-left-color:var(--red)}.card.amber{border-left-color:var(--amber)}
+ .card.green{border-left-color:var(--green)}.card.slate{border-left-color:var(--slate)}
+ .card .top{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+ .card .id{font-weight:700}.card .st{font-size:11px;opacity:.85}
+ .card .meta{font-size:11px;opacity:.7;margin-top:4px;line-height:1.5}
+ .pill{font-size:10px;padding:1px 7px;border-radius:999px;background:#24304d;margin-left:6px}
+ .legend{font-size:11px;opacity:.8;padding:0 18px 14px}
+ .legend span{display:inline-block;margin-right:14px}
+ .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle}
+</style>
+<header>
+ <h1>HAQ SETU · SDM CONTROL BOARD</h1>
+ <span id=integ class="badge b-slate">…</span>
+ <span class="badge b-red">RED <b id=c-red>0</b></span>
+ <span class="badge b-amber">AMBER <b id=c-amber>0</b></span>
+ <span class="badge b-green">GREEN <b id=c-green>0</b></span>
+ <span class="badge b-slate">SLATE <b id=c-slate>0</b></span>
+ <span style="margin-left:auto;font-size:11px;opacity:.7" id=gen></span>
+</header>
+<div class=legend>
+ <span><i class=dot style="background:var(--red)"></i>breach(escalate)/contested — act+upward</span>
+ <span><i class=dot style="background:var(--amber)"></i>breach(soft)/pending-ack/needs-date/near — watch</span>
+ <span><i class=dot style="background:var(--green)"></i>closed/fulfilled/acked — done</span>
+ <span><i class=dot style="background:var(--slate)"></i>in-SLA/owed-in-time — counting</span>
+</div>
+<main>
+ <section><h2>Civic Board (assets)</h2><div id=civic></div></section>
+ <section><h2>Owed Checklist (Sabha promises)</h2><div id=comm></div></section>
+ <section><h2>Sabha Archive (records)</h2><div id=sabha></div></section>
+ <section><h2>Petitions / Haq Receipts</h2><div id=pet></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function card(color,top,st,meta){return `<div class="card ${color}"><div class=top>${top}<span class=st>${esc(st)}</span></div><div class=meta>${meta}</div></div>`;}
+async function load(){
+ let v; try{v=await (await fetch('/api/view')).json();}catch(e){$('integ').textContent='OFFLINE';return;}
+ const I=v.integrity;
+ $('integ').className='badge '+(I.chain_ok?'b-green':'b-red');
+ $('integ').innerHTML=I.chain_ok?`<span class=ok>CHAIN OK</span> · len ${I.chain_len} · PII-guard ${esc(I.pii_guard)} · sla=${esc(I.sla_mode_default)}`:`<span class=bad>TAMPER seq ${I.first_bad_seq}</span>`;
+ for(const k of['red','amber','green','slate'])$('c-'+k).textContent=v.counts[k]||0;
+ $('gen').textContent='generated '+esc(v.generated_at);
+ $('civic').innerHTML=v.civic.map(c=>card(c.color,
+   `<span class=id>${esc(c.category)}${c.ward!=null?' · W'+esc(c.ward):''}</span><span class=pill>${esc(c.case_id)}</span>`,
+   c.state,
+   (c.sla_hours?`SLA ${c.sla_hours}h · elapsed ${c.hours_elapsed}h · remaining ${c.hours_remaining}h<br>`:'')+
+   (c.from_sabha?`from Sabha ${esc(c.from_sabha)}<br>`:'')+
+   (c.escalated_to?`escalated&rarr;${esc(c.escalated_to)} (${esc(c.breach_mode)})<br>`:'')+
+   (c.evidence_hash?`fix-evidence ${esc(String(c.evidence_hash).slice(0,12))}`:''))).join('')||'<i>none</i>';
+ $('comm').innerHTML=v.commitments.map(c=>card(c.color,
+   `<span class=id>${esc(c.owner||'?')}</span><span class=pill>${esc(c.id)}</span>`,
+   c.state,
+   (c.task?esc(c.task)+'<br>':'')+
+   (c.due?`due ${esc(c.due)}<br>`:'')+
+   (c.raw_deadline?`deadline phrase "${esc(c.raw_deadline)}" &rarr; ${esc(c.reason||'needs a human date')}<br>`:'')+
+   (c.hours_overdue!=null?`overdue ${c.hours_overdue}h `:'')+
+   (c.escalated_to?`&rarr;${esc(c.escalated_to)} (${esc(c.breach_mode)})`:'')+
+   (c.from_sabha?`<br>from Sabha ${esc(c.from_sabha)}`:''))).join('')||'<i>none</i>';
+ $('pet').innerHTML=(v.petitions||[]).map(c=>card(c.color,
+   `<span class=id>${esc((c.schemes&&c.schemes[0])||c.state)}</span><span class=pill>${esc(c.case_id)}</span>`,
+   c.state,
+   (c.receipt_id?`receipt ${esc(c.receipt_id)}<br>`:'')+
+   (c.confidence!=null?`confidence ${c.confidence}<br>`:'')+
+   (c.sla_hours?`SLA ${c.sla_hours}h · elapsed ${c.hours_elapsed}h<br>`:'')+
+   (c.reason?`reason ${esc(c.reason)}<br>`:'')+
+   (c.escalated_to?`escalated&rarr;${esc(c.escalated_to)} (${esc(c.breach_mode)})`:''))).join('')||'<i>none</i>';
+ $('sabha').innerHTML=v.sabhas.map(s=>card(s.color,
+   `<span class=id>${esc(s.gp)} · ${esc(s.date)}</span><span class=pill>#${esc(s.row_id)}</span>`,
+   s.state,
+   `hash ${esc(s.minutes_hash)} · seq ${esc(s.ledger_seq)} · signed=${s.signed?'yes':'NO'}`+
+   (s.refuse_reason?` · reason ${esc(s.refuse_reason)}`:'')+
+   (s.acked?' · acked':' · <b>ack pending</b>'))).join('')||'<i>none</i>';
+}
+load(); setInterval(load,5000);
+</script>

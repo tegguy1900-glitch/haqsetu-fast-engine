@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HaqSetu | Agentic Node</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <style>
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; text-align: center; }
+        h1 { color: #38bdf8; margin-bottom: 5px; }
+        .tagline { color: #94a3b8; font-style: italic; margin-bottom: 30px; }
+        .btn-mic { background: #dc2626; color: white; font-size: 24px; padding: 20px 40px; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4); }
+        .btn-mic:disabled { background: #475569; cursor: not-allowed; }
+        #voice-status { font-size: 18px; margin: 20px 0; min-height: 30px; color: #fbbf24; }
+        .brain-scan { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 20px; display: none; text-align: left; border: 1px solid #334155; }
+        .brain-title { font-size: 14px; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px; }
+        .bar-container { margin-bottom: 8px; }
+        .bar-label { font-size: 12px; display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .bar-bg { background: #334155; height: 8px; border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; background: #38bdf8; border-radius: 4px; }
+        .vault { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 20px; border: 1px solid #334155; display: none; text-align: left; }
+        .vault-title { color: #10b981; font-weight: bold; margin-bottom: 10px; }
+        .hash-display { font-family: monospace; font-size: 12px; color: #94a3b8; word-break: break-all; background: #0f172a; padding: 10px; border-radius: 6px; margin-top: 10px; }
+        .panel { background: #1e293b; padding: 20px; border-radius: 12px; margin-top: 30px; border: 1px solid #334155; text-align: left; }
+        .row { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
+        .flag-critical { border-color: #dc2626; }
+        .flag-high { border-color: #f59e0b; }
+        .led { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; }
+        .btn-small { background: #334155; color: #f8fafc; border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer; margin-right: 6px; margin-top: 6px; }
+        input[type=text] { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 6px; margin-top: 10px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <h1>HaqSetu Agentic Node</h1>
+    <p class="tagline">The village speaks. The right desk is named. The plan fits one visit. The clock is public. The machine never denies.</p>
+
+    <button id="btn-speak" class="btn-mic">Speak to HaqSetu</button>
+    <div id="voice-status">Click to begin intake...</div>
+
+    <div id="brain-scan" class="brain-scan">
+        <div class="brain-title">AI Brain Scan (Live Confidence Weights)</div>
+        <div id="brain-bars"></div>
+    </div>
+
+    <div id="vault" class="vault">
+        <div class="vault-title">Cryptographic Evidence Vault</div>
+        <p style="font-size: 14px; color: #94a3b8;">Upload a photo. Its SHA-256 pixel hash is locked in the ledger.</p>
+        <input type="file" id="file-input" accept="image/*" style="color: #f8fafc;">
+        <button id="btn-upload" class="btn-small" style="background:#10b981;">Lock Evidence</button>
+        <div id="vault-hash" class="hash-display" style="display:none;"></div>
+    </div>
+
+    <div class="panel" style="border-color: #dc2626;">
+        <div class="vault-title" style="color: #dc2626;">EXHIBIT CHALLENGE: Try to Deny Me</div>
+        <p style="font-size: 14px; color: #94a3b8;">Pretend you are a corrupt official. Try to reject this widow's pension case.</p>
+        <input type="text" id="denial-reason" placeholder="Enter fake reason (e.g., 'No funds')">
+        <button id="btn-deny" style="background: #dc2626; color: white; padding: 12px 20px; border: none; border-radius: 6px; margin-top: 10px; cursor: pointer; font-weight: bold; width: 100%;">ATTEMPT DENIAL (Sarpanch Override)</button>
+        <div id="denial-result" style="display:none; margin-top: 15px; background: #0f172a; padding: 15px; border-radius: 8px; border: 2px solid #10b981;">
+            <div style="color: #10b981; font-weight: bold; font-size: 16px; margin-bottom: 10px;">DENIAL BLOCKED. AUTO-ESCALATED.</div>
+            <pre id="proof-trace" style="color: #f8fafc; font-family: monospace; font-size: 12px; white-space: pre-wrap; margin: 0;"></pre>
+        </div>
+    </div>
+
+    <div class="panel" style="border-color: #f59e0b;">
+        <div class="vault-title" style="color: #f59e0b;">🚨 RED FLAG EXTORTION DASHBOARD</div>
+        <p style="font-size: 14px; color: #94a3b8;">Scans ledger statistics for desks showing corruption patterns (chronic stalls, mass rejections).</p>
+        <button id="btn-flags" class="btn-small" style="background:#f59e0b;color:#0f172a;font-weight:bold;">Scan Ledger for Corruption Patterns</button>
+        <div id="flags-out" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="panel" style="border-color: #38bdf8;">
+        <div class="vault-title" style="color: #38bdf8;">⏰ LIVE STALL-WATCH BOARD</div>
+        <p style="font-size: 14px; color: #94a3b8;">Every open case carries a public clock. Stalls auto-escalate with evidence. "Pending at Panchayat" is separated from "pending at another office".</p>
+        <button id="btn-open-case" class="btn-small">+ Open Case (Crop Loss, 72h)</button>
+        <button id="btn-open-case2" class="btn-small">+ Open Case (Pension, 48h)</button>
+        <button id="btn-refresh-board" class="btn-small">Refresh Board</button>
+        <div id="board-out" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="panel" style="border-color: #a855f7;">
+        <div class="vault-title" style="color: #a855f7;">👻 GHOST AUDIT CLOSURE (10% Callback Rule)</div>
+        <p style="font-size: 14px; color: #94a3b8;">Officials cannot silently close fake work. 10% of closures are intercepted and sent to two independent verifiers.</p>
+        <input type="text" id="close-case-id" placeholder="Case ID from the board (e.g., CASE-1234)">
+        <label style="font-size:13px;color:#94a3b8;"><input type="checkbox" id="force-audit"> Force audit (demo switch)</label>
+        <button id="btn-close-case" class="btn-small" style="background:#a855f7;font-weight:bold;">Close Case (Official)</button>
+        <div id="close-out" style="margin-top:10px;"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

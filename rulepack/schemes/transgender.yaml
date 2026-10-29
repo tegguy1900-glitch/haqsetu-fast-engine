@@ -1,0 +1,19 @@
+scheme: transgender
+state: haryana
+rules:
+  - id: transgender_001
+    description: "Transgender Welfare eligibility."
+    when:
+      - field: is_transgender
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'tg_cert']
+    desk: social_justice
+    source: {doc: "Transgender Welfare Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

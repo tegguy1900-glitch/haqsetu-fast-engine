@@ -1,0 +1,19 @@
+scheme: freedom_fighter
+state: haryana
+rules:
+  - id: freedom_fighter_001
+    description: "Freedom Fighter eligibility."
+    when:
+      - field: is_freedom_fighter
+        op: eq
+        value: true
+    outcome: include
+    documents: ['freedom_cert']
+    desk: home_ministry
+    source: {doc: "Freedom Fighter Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

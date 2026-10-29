@@ -1,0 +1,768 @@
+"""
+HaqSetu - Realistic Scheme Registration Engine (expanded, declarative).
+
+SCOPE (stated for the viva): a FAITHFUL model of 14 major Central Sector /
+Centrally-Sponsored schemes, NOT the literal universe of all Indian schemes.
+Per-scheme eligibility gates and required fields/documents reflect the
+published official criteria; where a threshold is scheme-guideline-specific it
+is encoded conservatively and the rules panel tells the officer to verify on
+the portal.
+
+BOUNDARY: national identity / banking / document rails (UIDAI Aadhaar auth,
+NPCI seeding, DigiLocker, land-record / SECC / CIBIL / death / disability
+registries) require government empanelment and CANNOT be called from a student
+project. They are SWAPPABLE MOCK ADAPTERS with deterministic, controllable
+behaviour. Everything else - schemas, two-layer validation (format vs
+eligibility), the declarative eligibility evaluator, the adapter registry, the
+state machine, the audit trail, duplicate blocking and registration-ID format -
+is genuine. Pure stdlib. evaluate() is side-effect free; register() =
+evaluate() + duplicate check + persistence + audit + reg-ID.
+
+We do NOT public-checksum-validate Aadhaar (UIDAI's real check digit uses a
+secret table; a public Verhoeff check would WRONGLY reject genuine numbers).
+Aadhaar gets only the public structural screen (12 digits, starts 2-9, not
+all-same); true auth is the mock adapter's job.
+
+ADDING A SCHEME = a config change in SCHEMAS (fields + declarative eligibility
+rules + adapter names). No code edit, no frontend edit - the schema-driven UI
+renders it automatically. That is the design goal.
+"""
+import os, re, json, time, sqlite3, base64, hashlib
+
+DB_PATH = "data/haqsetu.db"
+UPLOAD_DOCS = "uploads/docs"
+YEAR = time.strftime("%Y")
+
+def _f(key, label, typ, required=True, validate=None, doc=None, help=None, options=None):
+    d = {"key": key, "label": label, "type": typ, "required": bool(required)}
+    if validate: d["validate"] = validate
+    if doc: d["doc"] = doc
+    if help: d["help"] = help
+    if options: d["options"] = options
+    return d
+
+CAT = ["General", "OBC", "SC", "ST"]
+GEN = ["M", "F", "Other"]
+YN = ["Yes", "No"]
+
+# declarative eligibility rule = {desc, fail?, and ONE of: field+op+value | doc+present}
+def _r(desc, **kw):
+    d = {"desc": desc}
+    d.update(kw)
+    return d
+
+SCHEMAS = {
+ "MGNREGA": {
+   "title":"MGNREGA Job Card","category":"Livelihood","reg_id_prefix":"MGN",
+   "summary":"100 days of guaranteed unskilled rural work per household; wages via DBT.",
+   "status_flow":["draft","submitted","under_review","job_card_issued","active"],
+   "adapters":["uidai","npci","residence"],
+   "external_checks":["UIDAI Aadhaar (mock)","NPCI wage-account seeding (mock)","Panchayat residence (mock)"],
+   "eligibility":[
+     _r("Applicant must be an adult (18+) member of a rural household.", field="age", op=">=", value=18),
+     _r("Resident of the concerned Gram Panchayat.", field="village", op="nonempty"),
+     _r("Household must not already hold an active job card (duplicate blocked at register).", field="__dup__", op="nonempty"),
+   ],
+   "fields":[
+     _f("name","Applicant name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar",help="Structural screen only; live auth is the UIDAI adapter."),
+     _f("ifsc","Wage bank IFSC","text",validate="ifsc",help="Wages paid via DBT to this seeded account."),
+     _f("account","Bank / Post A/c number","text",validate="account"),
+     _f("card_type","Job card type","select",options=["New","Add Member"]),
+   ]},
+
+ "OLD_AGE_PENSION": {
+   "title":"Old Age Pension (IGNOAPS)","category":"Social Security","reg_id_prefix":"PEN-O",
+   "summary":"Monthly pension for citizens aged 60+ (higher slabs for 80+).",
+   "status_flow":["draft","submitted","under_review","sanctioned","disbursed"],
+   "adapters":["uidai","npci","residence","life_cert"],
+   "external_checks":["UIDAI Aadhaar (mock)","NPCI account seeding (mock)","Panchayat residence (mock)","Life-certificate status (mock)"],
+   "eligibility":[
+     _r("Beneficiary must be 60 years or older (central IGNOAPS).", field="age", op=">=", value=60, fail="Old Age Pension requires the beneficiary to be 60 years or older."),
+     _r("Resident of the Gram Panchayat.", field="village", op="nonempty"),
+     _r("Must not already draw a similar pension (cross-scheme dedup at register).", field="__dup__", op="nonempty"),
+   ],
+   "fields":[
+     _f("name","Applicant name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120",help="Format screen 18-120; the 60+ rule is enforced at eligibility."),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("apl_bpl","Ration-card class","select",options=["BPL","APL"]),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Pension bank IFSC","text",validate="ifsc"),
+     _f("account","Bank / Post A/c number","text",validate="account"),
+   ]},
+
+ "VIDHWA_PENSION": {
+   "title":"Widow Pension (IGNVIPS)","category":"Social Security","reg_id_prefix":"PEN-W",
+   "summary":"Monthly pension for widows; death certificate mandatory.",
+   "status_flow":["draft","submitted","doc_verification","under_review","sanctioned","disbursed"],
+   "adapters":["uidai","npci","residence","death_cert","remarriage"],
+   "external_checks":["UIDAI Aadhaar (mock)","Death-certificate OCR + name match (local/mock)","Remarriage status (mock)","NPCI account seeding (mock)"],
+   "eligibility":[
+     _r("Beneficiary must be female.", field="gender", op="==", value="F", fail="Widow Pension beneficiaries must be female."),
+     _r("Marital status must be Widowed.", field="marital", op="==", value="Widowed", fail="Marital status must be 'Widowed'."),
+     _r("Adult (18+).", field="age", op=">=", value=18),
+   ],
+   "fields":[
+     _f("name","Applicant name","text",validate="name"),
+     _f("husband","Deceased husband's name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN,help="Eligibility requires Female."),
+     _f("marital","Marital status","select",options=["Widowed","Divorced","Separated","Other"],help="Eligibility requires Widowed."),
+     _f("death_certificate","Husband's death certificate","file",doc="death",help="Required document; OCR-verified when the engine is available."),
+     _f("dependents","Number of dependents","number",validate="int:0:20"),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Pension bank IFSC","text",validate="ifsc"),
+     _f("account","Bank / Post A/c number","text",validate="account"),
+   ]},
+
+ "DISABILITY_PENSION": {
+   "title":"Disability Pension (Deen Dayal / NGDP)","category":"Social Security","reg_id_prefix":"PEN-D",
+   "summary":"Monthly pension for persons with benchmark disability (40%+).",
+   "status_flow":["draft","submitted","doc_verification","under_review","sanctioned","disbursed"],
+   "adapters":["uidai","npci","residence","disability_cert"],
+   "external_checks":["UIDAI Aadhaar (mock)","Disability-certificate OCR + % check (local/mock)","NPCI account seeding (mock)"],
+   "eligibility":[
+     _r("Declared disability must be Yes.", field="has_disability", op="==", value="Yes", fail="Applicant must declare a disability."),
+     _r("Benchmark disability of 40% or more.", field="disability_percent", op=">=", value=40, fail="Disability pension requires benchmark disability of 40% or more."),
+   ],
+   "fields":[
+     _f("name","Applicant name","text",validate="name"),
+     _f("father","Father / Guardian name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("has_disability","Has benchmark disability?","select",options=YN),
+     _f("disability_type","Type of disability","select",options=["Visual","Hearing","Locomotor","Intellectual","Mental illness","Multiple"],required=False),
+     _f("disability_percent","Disability %","number",validate="int:0:100"),
+     _f("disability_certificate","Disability certificate (UDID)","file",doc="disability",help="Required; OCR-verified when available."),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Pension bank IFSC","text",validate="ifsc"),
+     _f("account","Bank / Post A/c number","text",validate="account"),
+   ]},
+
+ "PM_KISAN": {
+   "title":"PM-KISAN Samman Nidhi","category":"Agriculture","reg_id_prefix":"KISAN",
+   "summary":"Rs 6,000/year income support to landholding farmer families in 3 instalments.",
+   "status_flow":["draft","submitted","doc_verification","under_review","approved","disbursed"],
+   "adapters":["uidai","npci","residence","land_record"],
+   "external_checks":["UIDAI Aadhaar (mock)","Land-record (khasra/khatauni) verification (mock)","NPCI account seeding (mock)"],
+   "eligibility":[
+     _r("Applicant must be a landholding farmer.", field="is_farmer", op="==", value="Yes", fail="PM-KISAN is for landholding farmer families."),
+     _r("Institutional / government-land holders are excluded (mock cross-check at review).", field="gov_employee", op="!=", value="Yes", fail="Government employees / institutional landholders are excluded from PM-KISAN."),
+   ],
+   "fields":[
+     _f("name","Farmer name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("is_farmer","Landholding farmer?","select",options=YN),
+     _f("gov_employee","Government employee?","select",options=YN,help="Yes => excluded."),
+     _f("land_holding_acres","Holding size (acres)","number",validate="int:0:1000",required=False),
+     _f("land_record","Land record (khasra / khatauni)","file",doc="land",help="Required to prove landholding."),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Bank IFSC","text",validate="ifsc"),
+     _f("account","Bank / Post A/c number","text",validate="account"),
+   ]},
+
+ "PM_AWAS_GRAMIN": {
+   "title":"PM Awas Yojana - Gramin","category":"Housing","reg_id_prefix":"AWAS",
+   "summary":"Financial assistance to build a pucca rural house for eligible households.",
+   "status_flow":["draft","submitted","under_review","surveyed","sanctioned","constructed"],
+   "adapters":["uidai","residence","house_survey"],
+   "external_checks":["UIDAI Aadhaar (mock)","Panchayat residence (mock)","House-status survey (mock)"],
+   "eligibility":[
+     _r("Household must be without a pucca house (per survey / D1-D4 categories).", field="house_status", op="in", value=["No pucca house","Kutcha house only","Houseless"], fail="PMAY-Gramin is for rural households without a pucca house."),
+     _r("Adult head / member (18+).", field="age", op=">=", value=18),
+   ],
+   "fields":[
+     _f("name","Applicant name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name",required=False),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("house_status","Current housing status","select",options=["No pucca house","Kutcha house only","Houseless","Has pucca house"]),
+     _f("family_members","Family members","number",validate="int:1:20"),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Bank IFSC (for subsidy)","text",validate="ifsc",required=False),
+     _f("account","Bank / Post A/c number","text",validate="account",required=False),
+   ]},
+
+ "PM_UJJWALA": {
+   "title":"PM Ujjwala Yojana (LPG)","category":"Energy","reg_id_prefix":"UJJWALA",
+   "summary":"Free LPG connection + deposit-backed stove for BPL women.",
+   "status_flow":["draft","submitted","under_review","connection_done","active"],
+   "adapters":["uidai","residence","bpl_verify"],
+   "external_checks":["UIDAI Aadhaar (mock)","Panchayat residence (mock)","BPL / ration-card verification (mock)"],
+   "eligibility":[
+     _r("Beneficiary must be an adult woman from a BPL household.", field="gender", op="==", value="F", fail="Ujjwala beneficiaries must be adult women."),
+     _r("Household must be BPL (ration-card based).", field="bpl_flag", op="==", value="Yes", fail="Ujjwala is for BPL households."),
+     _r("Adult (18+).", field="age", op=">=", value=18),
+   ],
+   "fields":[
+     _f("name","Beneficiary (woman) name","text",validate="name"),
+     _f("husband","Husband / Father name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN,help="Eligibility requires Female."),
+     _f("bpl_flag","BPL household?","select",options=YN),
+     _f("ration_card_no","Ration card number","text",required=False),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+   ]},
+
+ "AYUSHMANN BHARAT": {
+   "title":"Ayushman Bharat - PM-JAY","category":"Health","reg_id_prefix":"PMJAY",
+   "summary":"Rs 5 lakh/year family health insurance for eligible (SECC/BPL) families.",
+   "status_flow":["draft","submitted","under_review","card_issued","active"],
+   "adapters":["uidai","secc_eligibility"],
+   "external_checks":["UIDAI Aadhaar (mock)","SECC 2011 / BPL eligibility list (mock)"],
+   "eligibility":[
+     _r("Family must appear in the SECC 2011 / BPL eligibility list.", field="ration_card", op="nonempty", fail="PM-JAY requires the family to be on the SECC/BPL eligibility list (provide ration card)."),
+   ],
+   "fields":[
+     _f("name","Head of family name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name",required=False),
+     _f("age","Age","number",validate="age:0:120",required=False),
+     _f("gender","Gender","select",options=GEN,required=False),
+     _f("category","Social category","select",options=CAT,required=False),
+     _f("ration_card","Ration card / SECC ID","text",help="Used to match the SECC/BPL eligibility list."),
+     _f("family_size","Family members","number",validate="int:1:20"),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+   ]},
+
+ "SUKANYA SAMRIDDHI": {
+   "title":"Sukanya Samriddhi Yojana","category":"Savings","reg_id_prefix":"SSY",
+   "summary":"High-interest small-savings scheme for the girl child (account by age 10).",
+   "status_flow":["draft","submitted","under_review","account_open","active"],
+   "adapters":["uidai","npci","birth_cert"],
+   "external_checks":["Guardian UIDAI Aadhaar (mock)","Girl-child birth-certificate verification (local/mock)","NPCI account seeding (mock)"],
+   "eligibility":[
+     _r("Guardian must be an adult (18+).", field="guardian_age", op=">=", value=18, fail="The account guardian must be 18 or older."),
+     _r("Girl child must be under 10 years at account opening.", field="child_age", op="<", value=10, fail="Sukanya Samriddhi accounts must be opened for a girl child below 10 years."),
+   ],
+   "fields":[
+     _f("guardian_name","Guardian name","text",validate="name"),
+     _f("guardian_age","Guardian age","number",validate="age:18:120"),
+     _f("guardian_aadhaar","Guardian Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("guardian_mobile","Guardian mobile","text",validate="mobile"),
+     _f("child_name","Girl child name","text",validate="name"),
+     _f("child_age","Girl child age","number",validate="int:0:18",help="Must be < 10 to open."),
+     _f("birth_certificate","Child's birth certificate","file",doc="birth",help="Required to prove the child's age/identity."),
+     _f("ifsc","Bank / Post office IFSC","text",validate="ifsc"),
+     _f("account","Account number","text",validate="account"),
+     _f("village","Village / Ward","text"),
+   ]},
+
+ "ATAL PENSION": {
+   "title":"Atal Pension Yojana (APY)","category":"Pension","reg_id_prefix":"APY",
+   "summary":"Guaranteed monthly pension Rs 1k-5k after 60, for unorganised-sector workers 18-40.",
+   "status_flow":["draft","submitted","under_review","enrolled","active"],
+   "adapters":["uidai","npci","occupation"],
+   "external_checks":["UIDAI Aadhaar (mock)","NPCI account seeding (mock)","Unorganised-sector occupation check (mock)"],
+   "eligibility":[
+     _r("Subscriber must be 18-40 years old.", field="age", op=">=", value=18, fail="APY subscribers must be at least 18 years old."),
+     _r("Subscriber must be 40 or younger at enrolment.", field="age", op="<=", value=40, fail="APY cannot be joined after age 40."),
+     _r("Must have a bank account + mobile for auto-debit.", field="account", op="nonempty"),
+   ],
+   "fields":[
+     _f("name","Subscriber name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120",help="Eligibility window 18-40."),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("occupation","Occupation","text",help="Unorganised sector (e.g. vendor, farmer, worker)."),
+     _f("pension_amount","Chosen monthly pension","select",options=["1000","2000","3000","4000","5000"]),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Bank IFSC (auto-debit)","text",validate="ifsc"),
+     _f("account","Bank A/c number","text",validate="account"),
+   ]},
+
+ "PM MATRU VANDANA": {
+   "title":"PM Matru Vandana Yojana (maternity benefit)","category":"Health","reg_id_prefix":"PMMVY",
+   "summary":"Cash maternity benefit for pregnant & lactating mothers (institutional delivery).",
+   "status_flow":["draft","submitted","doc_verification","under_review","sanctioned","disbursed"],
+   "adapters":["uidai","npci","anc_record"],
+   "external_checks":["UIDAI Aadhaar (mock)","NPCI account seeding (mock)","ANC / pregnancy registration record (local/mock)"],
+   "eligibility":[
+     _r("Beneficiary must be female.", field="gender", op="==", value="F", fail="Maternity benefit is for women."),
+     _r("Must be 19 years or older.", field="age", op=">=", value=19, fail="PMMVY beneficiaries must be 19 years or older."),
+     _r("Pregnancy must be registered (ANC).", field="pregnancy_weeks", op="nonempty", fail="Provide weeks of pregnancy / ANC registration."),
+   ],
+   "fields":[
+     _f("name","Mother name","text",validate="name"),
+     _f("husband","Husband name","text",validate="name"),
+     _f("age","Age","number",validate="age:18:120",help="Eligibility requires 19+."),
+     _f("gender","Gender","select",options=GEN,help="Requires Female."),
+     _f("pregnancy_weeks","Weeks of pregnancy","number",validate="int:0:45"),
+     _f("first_child","First living child?","select",options=YN,help="Full benefit for first child; partial for second."),
+     _f("anc_record","ANC / pregnancy registration","file",doc="anc",help="Required to verify pregnancy registration."),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Bank IFSC","text",validate="ifsc"),
+     _f("account","Bank A/c number","text",validate="account"),
+   ]},
+
+ "PM VISHWAKARMA": {
+   "title":"PM Vishwakarma (artisans)","category":"Livelihood","reg_id_prefix":"VISHW",
+   "summary":"Credit + toolkit incentive + training for traditional artisans (18 trades).",
+   "status_flow":["draft","submitted","under_review","enrolled","active"],
+   "adapters":["uidai","npci","trade_verify"],
+   "external_checks":["UIDAI Aadhaar (mock)","NPCI account seeding (mock)","Trade / occupation verification (mock)"],
+   "eligibility":[
+     _r("Applicant must practise a traditional artisan trade.", field="trade", op="nonempty", fail="PM Vishwakarma is for practitioners of the notified traditional trades."),
+     _r("Adult (18+).", field="age", op=">=", value=18),
+   ],
+   "fields":[
+     _f("name","Artisan name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name",required=False),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("trade","Trade","select",options=["Carpenter","Blacksmith/Forgeman","Potter","Weaver","Leather worker","Tailor","Goldsmith","Gold smith","Stone mason","Photographer","Oil presser","Barber","Laundryman","Bicyclist/repairer","Fisherman","Cobbler","Others"]),
+     _f("experience_years","Years practising","number",validate="int:0:80",required=False),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Bank IFSC","text",validate="ifsc"),
+     _f("account","Bank A/c number","text",validate="account"),
+   ]},
+
+ "SKILL INDIA (PMKVY)": {
+   "title":"PM Kaushal Vikas Yojana (Skill India)","category":"Skilling","reg_id_prefix":"SKILL",
+   "summary":"Free short-term skill training + certification + placement support for youth.",
+   "status_flow":["draft","submitted","under_review","enrolled","certified","placed"],
+   "adapters":["uidai","occupation"],
+   "external_checks":["UIDAI Aadhaar (mock)","Age-band / candidate eligibility (mock)"],
+   "eligibility":[
+     _r("Candidate must be 15-45 years (per PMKVY guidelines; verify on portal).", field="age", op=">=", value=15, fail="PMKVY targets youth aged 15 and above."),
+     _r("Upper age band 45 (per PMKVY guidelines; verify on portal).", field="age", op="<=", value=45, fail="PMKVY standard enrolment upper age is 45."),
+   ],
+   "fields":[
+     _f("name","Candidate name","text",validate="name"),
+     _f("father","Father / Husband name","text",validate="name",required=False),
+     _f("age","Age","number",validate="age:15:120",help="Eligibility band 15-45."),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("qualification","Highest qualification","select",options=["Below 10th","10th","12th","ITI","Diploma","Graduate+","None"],required=False),
+     _f("course_interest","Preferred skill sector","text",required=False),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+   ]},
+
+ "MUDRA LOAN": {
+   "title":"PM MUDRA Yojana (credit)","category":"Credit","reg_id_prefix":"MUDRA",
+   "summary":"Collateral-free micro-loans: Shishu (<=50k), Kishor (<=5L), Tarun (<=10L).",
+   "status_flow":["draft","submitted","under_review","sanctioned","disbursed"],
+   "adapters":["uidai","npci","cibil"],
+   "external_checks":["UIDAI Aadhaar (mock)","NPCI account seeding (mock)","Credit history / CIBIL (mock)"],
+   "eligibility":[
+     _r("Applicant must be 18+.", field="age", op=">=", value=18),
+     _r("Must have a non-corporate micro enterprise / livelihood activity.", field="enterprise_name", op="nonempty", fail="MUDRA requires a running or planned micro enterprise."),
+     _r("Loan stage must be Shishu / Kishor / Tarun.", field="loan_stage", op="in", value=["Shishu","Kishor","Tarun"], fail="Choose a valid MUDRA product (Shishu/Kishor/Tarun)."),
+   ],
+   "fields":[
+     _f("name","Promoter name","text",validate="name"),
+     _f("father","Father / Spouse name","text",validate="name",required=False),
+     _f("age","Age","number",validate="age:18:120"),
+     _f("gender","Gender","select",options=GEN),
+     _f("category","Social category","select",options=CAT),
+     _f("enterprise_name","Enterprise / activity name","text"),
+     _f("enterprise_type","Type","select",options=["Manufacturing","Trading","Services","Agri","Other"],required=False),
+     _f("loan_stage","MUDRA product","select",options=["Shishu","Kishor","Tarun"]),
+     _f("loan_amount","Amount sought (Rs)","number",validate="int:1:10000000"),
+     _f("village","Village / Ward","text"),
+     _f("mobile","Mobile","text",validate="mobile"),
+     _f("aadhaar","Aadhaar (12 digit)","text",validate="aadhaar"),
+     _f("ifsc","Bank IFSC","text",validate="ifsc"),
+     _f("account","Bank A/c number","text",validate="account"),
+   ]},
+}
+
+# ---------- format validators (layer 1) ----------
+def _v_name(v):
+    v=str(v or "").strip()
+    if len(v)<2: return "enter full name"
+    if not re.match(r"^[A-Za-z\u0900-\u097F .'-]+$", v): return "letters only"
+    return None
+def _v_mobile(v):
+    d=re.sub(r"\D","",str(v or ""))
+    if len(d)==12 and d.startswith("91"): d=d[2:]
+    if len(d)==11 and d.startswith("0"): d=d[1:]
+    if len(d)!=10: return "must be 10 digits"
+    if d[0] not in "6789": return "Indian mobile starts 6-9"
+    return None
+def _v_aadhaar(v):
+    d=re.sub(r"\D","",str(v or ""))
+    if len(d)!=12: return "must be 12 digits"
+    if d[0] in "01": return "cannot start with 0 or 1 (UIDAI rule)"
+    if len(set(d))==1: return "invalid (repeated digit)"
+    return None
+def _v_ifsc(v):
+    s=str(v or "").strip().upper()
+    if not re.fullmatch(r"[A-Z]{4}0[A-Z0-9]{6}", s): return "format ABCD0EFGHIJ"
+    return None
+def _v_account(v):
+    d=re.sub(r"\D","",str(v or ""))
+    if not (6<=len(d)<=18): return "6-18 digits"
+    return None
+def _v_int(v,lo,hi):
+    try: n=int(str(v).strip())
+    except Exception: return "whole number required"
+    if n<lo or n>hi: return "must be %d-%d"%(lo,hi)
+    return None
+def _validate(spec,value):
+    if not spec: return None
+    if spec=="name": return _v_name(value)
+    if spec=="mobile": return _v_mobile(value)
+    if spec=="aadhaar": return _v_aadhaar(value)
+    if spec=="ifsc": return _v_ifsc(value)
+    if spec=="account": return _v_account(value)
+    if spec.startswith("age:"):
+        _,lo,hi=spec.split(":"); return _v_int(value,int(lo),int(hi))
+    if spec.startswith("int:"):
+        _,lo,hi=spec.split(":"); return _v_int(value,int(lo),int(hi))
+    return None
+
+# ---------- declarative eligibility evaluator (layer 2) ----------
+def _num(x):
+    try: return float(str(x).strip())
+    except Exception: return None
+def _check_rule(r, app, docs):
+    op=r.get("op")
+    if op=="present":
+        return bool((docs or {}).get(r.get("doc")))
+    if op=="nonempty":
+        f=r.get("field")
+        if f=="__dup__": return True  # dup handled at register(), not here
+        return str(app.get(f,"")).strip()!=""
+    f=r.get("field"); raw=app.get(f)
+    if op in (">=","<=",">","<"):
+        a=_num(raw); b=r.get("value")
+        if a is None or b is None: return False
+        b=float(b)
+        return {"<=":a<=b,">=":a>=b,"<":a<b,">":a>b}[op]
+    if op=="==": return str(raw).strip()==str(r.get("value"))
+    if op=="!=": return str(raw).strip()!=str(r.get("value"))
+    if op=="in": return str(raw).strip() in [str(v) for v in r.get("value",[])]
+    if op=="not_in": return str(raw).strip() not in [str(v) for v in r.get("value",[])]
+    return False
+def _eligibility(sid, app, docs):
+    sch=SCHEMAS[sid]; out=[]; hard=[]
+    for r in sch.get("eligibility",[]):
+        if r.get("field")=="__dup__":
+            continue  # informational only; real dup check is in register()
+        ok=_check_rule(r, app, docs)
+        out.append({"rule":r["desc"],"passed":bool(ok)})
+        if not ok: hard.append(r.get("fail") or r["desc"])
+    return out, hard
+
+# ---------- mock external adapters (the swappable boundary) ----------
+def _aad(app):
+    return app.get("aadhaar") or app.get("guardian_aadhaar") or ""
+def ad_uidai(app,docs):
+    d=re.sub(r"\D","",str(_aad(app)))
+    if d.startswith("9"): return {"check":"UIDAI Aadhaar","status":"not_seeded","note":"mock: number not found in seeded registry -> officer review"}
+    return {"check":"UIDAI Aadhaar","status":"verified","note":"mock adapter (live = UIDAI auth)"}
+def ad_npci(app,docs):
+    d=re.sub(r"\D","",str(app.get("account","")))
+    if d.endswith("0000"): return {"check":"NPCI account seeding","status":"not_seeded","note":"mock: wage/pension account not seeded -> review"}
+    if not d: return {"check":"NPCI account seeding","status":"missing","note":"no account provided"}
+    return {"check":"NPCI account seeding","status":"verified","note":"mock adapter (live = NPCI)"}
+def ad_residence(app,docs):
+    return {"check":"Panchayat residence","status":"verified" if str(app.get("village","")).strip() else "missing","note":"mock adapter"}
+def ad_life_cert(app,docs):
+    return {"check":"Life certificate","status":"verified","note":"mock adapter (annual e-Jeevan Rekha)"}
+def ad_occupation(app,docs):
+    return {"check":"Occupation (unorganised sector)","status":"verified" if str(app.get("occupation","")).strip() else "manual_review","note":"mock adapter"}
+def ad_trade(app,docs):
+    return {"check":"Trade verification","status":"verified" if str(app.get("trade","")).strip() else "manual_review","note":"mock adapter"}
+def ad_bpl_verify(app,docs):
+    return {"check":"BPL / ration-card","status":"verified" if str(app.get("bpl_flag",""))=="Yes" else "manual_review","note":"mock adapter"}
+def ad_secc_eligibility(app,docs):
+    return {"check":"SECC 2011 / BPL list","status":"verified" if str(app.get("ration_card","")).strip() else "manual_review","note":"mock adapter"}
+def ad_house_survey(app,docs):
+    return {"check":"House-status survey","status":"verified" if str(app.get("house_status","")) in ("No pucca house","Kutcha house only","Houseless") else "manual_review","note":"mock adapter (D1-D4)"}
+def ad_cibil(app,docs):
+    return {"check":"Credit history (CIBIL)","status":"verified","note":"mock adapter (live = credit bureau)"}
+def _ocr_doc(app,docs,key,label,keywords):
+    path=(docs or {}).get(key)
+    if not path: return {"check":label,"status":"missing","note":"required document absent"}
+    try:
+        import pytesseract
+        from PIL import Image
+        real=path
+        if str(path).startswith("data:"):
+            os.makedirs(UPLOAD_DOCS,exist_ok=True)
+            real=os.path.join(UPLOAD_DOCS,"%s_%d.png"%(re.sub(r"[^A-Za-z0-9_-]","_",key),int(time.time()*1000)%1000000))
+            with open(real,"wb") as fh: fh.write(base64.b64decode(path.split(",",1)[1]))
+        if os.path.exists(real):
+            txt=(pytesseract.image_to_string(Image.open(real)) or "").lower()
+            hit=any(k in txt for k in keywords)
+            return {"check":label,"status":"verified" if hit else "manual_review","note":"local OCR" if hit else "OCR inconclusive -> officer review"}
+    except Exception:
+        pass
+    return {"check":label,"status":"manual_review","note":"uploaded; OCR engine unavailable here -> officer review"}
+def ad_death_cert(app,docs): return _ocr_doc(app,docs,"death_certificate","Death certificate",["death","mrit","certific"])
+def ad_remarriage(app,docs): return {"check":"Remarriage status","status":"verified" if str(app.get("marital",""))=="Widowed" else "flag","note":"mock adapter (live = registrar)"}
+def ad_disability_cert(app,docs): return _ocr_doc(app,docs,"disability_certificate","Disability certificate",["disabil","udid","percent","%"])
+def ad_land_record(app,docs): return _ocr_doc(app,docs,"land_record","Land record",["khasra","khatauni","land","acre","plot"])
+def ad_birth_cert(app,docs): return _ocr_doc(app,docs,"birth_certificate","Birth certificate",["birth","janm","child"])
+def ad_anc_record(app,docs): return _ocr_doc(app,docs,"anc_record","ANC / pregnancy record",["anc","pregnan","mother","clinic"])
+ADAPTERS={"uidai":ad_uidai,"npci":ad_npci,"residence":ad_residence,"life_cert":ad_life_cert,
+ "occupation":ad_occupation,"trade_verify":ad_trade,"bpl_verify":ad_bpl_verify,
+ "secc_eligibility":ad_secc_eligibility,"house_survey":ad_house_survey,"cibil":ad_cibil,
+ "death_cert":ad_death_cert,"remarriage":ad_remarriage,"disability_cert":ad_disability_cert,
+ "land_record":ad_land_record,"birth_cert":ad_birth_cert,"anc_record":ad_anc_record}
+
+# ---------- pure evaluation (no DB, no side effects) ----------
+def evaluate(sid, app, docs=None):
+    app=app or {}; docs=docs or {}
+    sch=SCHEMAS.get(sid)
+    if not sch: return {"ok":False,"stage":"unknown_scheme","errors":{"scheme_id":"no such scheme"}}
+    errors={}
+    for f in sch["fields"]:
+        val=app.get(f["key"]); empty=(val is None or str(val).strip()=="")
+        if f["type"]=="file":
+            if f["required"] and not docs.get(f["key"]): errors[f["key"]]="document required"
+            continue
+        if f["required"] and empty: errors[f["key"]]="required"; continue
+        if not empty and f.get("validate"):
+            e=_validate(f["validate"],val)
+            if e: errors[f["key"]]=e
+    if errors:
+        return {"ok":False,"stage":"validation","errors":errors,"fields":sch["fields"]}
+    elig,hard=_eligibility(sid,app,docs)
+    if hard:
+        return {"ok":False,"stage":"eligibility","reasons":hard,"eligibility":elig}
+    adapters=[ADAPTERS[n](app,docs) for n in sch.get("adapters",[]) if n in ADAPTERS]
+    warnings=[a for a in adapters if a["status"] in ("not_seeded","manual_review","missing","flag")]
+    status="under_review" if warnings else "submitted"
+    return {"ok":True,"stage":"ready","status":status,"eligibility":elig,
+            "adapters":adapters,"warnings":warnings,"reg_id_prefix":sch["reg_id_prefix"]}
+
+# ---------- persistence ----------
+def _conn():
+    os.makedirs("data",exist_ok=True)
+    c=sqlite3.connect(DB_PATH); c.row_factory=sqlite3.Row; return c
+NEW_COLS=[("applicant_name","TEXT"),("status","TEXT DEFAULT 'draft'"),("audit_log_json","TEXT"),
+ ("docs_json","TEXT"),("eligibility_json","TEXT"),("reg_id_format","TEXT")]
+def ensure_schema_columns():
+    c=_conn(); cur=c.cursor()
+    have={r["name"] for r in cur.execute("PRAGMA table_info(applications_scheme)")}
+    for col,typ in NEW_COLS:
+        if col not in have:
+            try: cur.execute("ALTER TABLE applications_scheme ADD COLUMN %s %s"%(col,typ))
+            except sqlite3.OperationalError: pass
+    c.commit(); c.close()
+def _hash_mobile(m): return hashlib.sha256(str(m or "").encode()).hexdigest()[:16]
+def _now(): return time.strftime("%Y-%m-%dT%H:%M:%S")
+def _event(actor,ev,detail=""): return {"ts":_now(),"actor":actor,"event":ev,"detail":detail}
+def _save_docs(docs,reg_id):
+    saved={}
+    for k,v in (docs or {}).items():
+        if isinstance(v,str) and v.startswith("data:"):
+            try:
+                os.makedirs(UPLOAD_DOCS,exist_ok=True)
+                fn=os.path.join(UPLOAD_DOCS,"%s_%s.png"%(re.sub(r"[^A-Za-z0-9_-]","_",reg_id),k))
+                with open(fn,"wb") as fh: fh.write(base64.b64decode(v.split(",",1)[1]))
+                saved[k]="/"+fn
+            except Exception: saved[k]="upload_failed"
+        elif v: saved[k]=str(v)
+    return saved
+def register(sid, app, docs=None):
+    ensure_schema_columns()
+    ev=evaluate(sid,app,docs)
+    if not ev.get("ok"): return ev
+    mh=_hash_mobile((app or {}).get("mobile") or (app or {}).get("guardian_mobile"))
+    c=_conn(); cur=c.cursor()
+    dup=cur.execute("SELECT id,status FROM applications_scheme WHERE citizen_mobile_hash=? AND scheme_name=? AND status NOT IN ('rejected','cancelled')",(mh,sid)).fetchone()
+    if dup:
+        c.close()
+        return {"ok":False,"stage":"duplicate","reasons":["This mobile is already registered for %s (application #%s, status %s)."%(sid,dup["id"],dup["status"])],"existing_id":dup["id"]}
+    seq=cur.execute("SELECT COUNT(*) AS n FROM applications_scheme WHERE scheme_name=?",(sid,)).fetchone()["n"]+1
+    reg_id="%s/%s/%05d"%(ev["reg_id_prefix"],YEAR,seq)
+    saved_docs=_save_docs(docs,reg_id)
+    audit=[_event("citizen","application_created","schema %s"%sid),
+           _event("system","format_validation_passed","all fields well-formed"),
+           _event("system","eligibility_passed",json.dumps(ev["eligibility"]))]
+    for a in ev["adapters"]: audit.append(_event("adapter:"+a["check"].split()[0].lower(),a["status"],a.get("note","")))
+    audit.append(_event("system","status_set",ev["status"]))
+    cur.execute("""INSERT INTO applications_scheme
+        (citizen_mobile_hash,scheme_name,parsed_data_json,applicant_name,status,
+         audit_log_json,docs_json,eligibility_json,reg_id_format,reg_id_generated,bot_status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (mh,sid,json.dumps(app),(app or {}).get("name") or (app or {}).get("guardian_name",""),ev["status"],
+         json.dumps(audit),json.dumps(saved_docs),json.dumps({"eligibility":ev["eligibility"],"adapters":ev["adapters"],"warnings":ev["warnings"]}),
+         reg_id,reg_id,"pending"))
+    aid=cur.lastrowid; c.commit()
+    row=dict(cur.execute("SELECT * FROM applications_scheme WHERE id=?",(aid,)).fetchone()); c.close()
+    return {"ok":True,"stage":"registered","application_id":aid,"registration_id":reg_id,
+            "status":ev["status"],"warnings":ev["warnings"],"audit":audit,"application":row}
+
+def get_schema(sid):
+    sch=SCHEMAS.get(sid)
+    if not sch: return None
+    return {"id":sid,"title":sch["title"],"category":sch["category"],"summary":sch.get("summary",""),
+            "reg_id_prefix":sch["reg_id_prefix"],"status_flow":sch["status_flow"],
+            "eligibility_rules":[r["desc"] for r in sch.get("eligibility",[]) if r.get("field")!="__dup__"],
+            "external_checks":sch.get("external_checks",[]),"fields":sch["fields"]}
+
+# ---------- HTTP adapters ----------
+def api_schema(handler,path):
+    from urllib.parse import unquote
+    sid=unquote(path.rsplit("/",1)[-1])
+    s=get_schema(sid)
+    if not s: handler._send_json(404,{"error":"unknown scheme: "+sid}); return
+    handler._send_json(200,s)
+def api_register(handler,body):
+    sid=body.get("scheme_id"); app=body.get("applicant") or {}; docs=body.get("docs") or {}
+    res=register(sid,app,docs)
+    if res.get("ok"):
+        handler._send_json(201 if res.get("stage")=="registered" else 200,res)
+    else:
+        handler._send_json(422,res)
+def api_list(handler):
+    cats={}
+    for sid,s in SCHEMAS.items():
+        cats.setdefault(s["category"],[]).append({"id":sid,"title":s["title"],"summary":s.get("summary",""),"reg_id_prefix":s["reg_id_prefix"]})
+    handler._send_json(200,{"categories":cats,"count":len(SCHEMAS),"scheme_ids":list(SCHEMAS.keys())})
+
+# ---------- headless self-demo ----------
+if __name__=="__main__":
+    cases=[
+      ("MGNREGA valid adult","MGNREGA",{"name":"Ramesh Yadav","father":"Suresh","age":"28","gender":"M","category":"SC","village":"ward7","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789","card_type":"New"},{}),
+      ("MGNREGA bad aadhaar(11)","MGNREGA",{"name":"X Y","father":"Z","age":"28","gender":"M","category":"General","village":"w","mobile":"9812345678","aadhaar":"12345678901","ifsc":"HDFC0001234","account":"50100123456789","card_type":"New"},{}),
+      ("PENSION age 55","OLD_AGE_PENSION",{"name":"A B","father":"C","age":"55","gender":"M","category":"General","apl_bpl":"BPL","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{}),
+      ("WIDOW male","VIDHWA_PENSION",{"name":"Hari","husband":"X","age":"40","gender":"M","marital":"Widowed","death_certificate":"d.pdf","dependents":"0","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{"death_certificate":"d.pdf"}),
+      ("WIDOW valid+doc","VIDHWA_PENSION",{"name":"Sita","husband":"Ramlal","age":"40","gender":"F","marital":"Widowed","death_certificate":"d.pdf","dependents":"2","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{"death_certificate":"d.pdf"}),
+      ("KISAN not farmer","PM_KISAN",{"name":"Urban Pro","father":"P","age":"40","gender":"M","category":"General","is_farmer":"No","gov_employee":"No","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{}),
+      ("KISAN farmer+land","PM_KISAN",{"name":"Gopal","father":"H","age":"45","gender":"M","category":"OBC","is_farmer":"Yes","gov_employee":"No","land_holding_acres":"3","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{"land_record":"lr.pdf"}),
+      ("SSY child age 12","SUKANYA SAMRIDDHI",{"guardian_name":"Mohan","guardian_age":"38","guardian_aadhaar":"234567890123","guardian_mobile":"9812345678","child_name":"Meena","child_age":"12","birth_certificate":"b.pdf","ifsc":"HDFC0001234","account":"50100123456789","village":"w"},{"birth_certificate":"b.pdf"}),
+      ("SSY valid","SUKANYA SAMRIDDHI",{"guardian_name":"Mohan","guardian_age":"38","guardian_aadhaar":"234567890123","guardian_mobile":"9812345678","child_name":"Meena","child_age":"6","birth_certificate":"b.pdf","ifsc":"HDFC0001234","account":"50100123456789","village":"w"},{"birth_certificate":"b.pdf"}),
+      ("APY age 45","ATAL PENSION",{"name":"Old Guy","father":"P","age":"45","gender":"M","category":"General","occupation":"Vendor","pension_amount":"2000","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{}),
+      ("APY valid","ATAL PENSION",{"name":"Ravi","father":"P","age":"30","gender":"M","category":"General","occupation":"Auto driver","pension_amount":"3000","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{}),
+      ("MUDRA valid","MUDRA LOAN",{"name":"Kiran","father":"P","age":"33","gender":"F","category":"General","enterprise_name":"Kiran Tailors","enterprise_type":"Services","loan_stage":"Kishor","loan_amount":"200000","village":"w","mobile":"9812345678","aadhaar":"234567890123","ifsc":"HDFC0001234","account":"50100123456789"},{}),
+      ("UJJWALA not BPL","PM_UJJWALA",{"name":"Anita","husband":"P","age":"30","gender":"F","bpl_flag":"No","village":"w","mobile":"9812345678","aadhaar":"234567890123"},{}),
+      ("AADHAAR starts 9 -> review","MGNREGA",{"name":"Gopal","father":"H","age":"30","gender":"M","category":"OBC","village":"w","mobile":"9812345678","aadhaar":"934567890123","ifsc":"HDFC0001234","account":"50100123456789","card_type":"New"},{}),
+    ]
+    print("=== EXPANDED ENGINE - HEADLESS DEMO (%d schemes) ==="%len(SCHEMAS))
+    for label,sid,app,docs in cases:
+        r=evaluate(sid,app,docs)
+        if not r.get("ok"):
+            if r.get("stage")=="validation": print("[%s] REJECT@format -> %s"%(label,r["errors"]))
+            else: print("[%s] REJECT@eligibility -> %s"%(label,r.get("reasons")))
+        else:
+            w=",".join(a["check"]+":"+a["status"] for a in r["warnings"]) or "none"
+            print("[%s] ACCEPT status=%s prefix=%s warnings=%s"%(label,r["status"],r["reg_id_prefix"],w))
+    print("=== scheme count:",len(SCHEMAS),"| categories:",sorted({s['category'] for s in SCHEMAS.values()}),"===")
+
+
+# ---------------- STEP 3: Vision-Bot attach to the SAME audited record ----------------
+# The bot is wired only to the central mock portals we actually built; schemes without
+# one legitimately remain under officer review (real behaviour, not a stub).
+BOT_APPROVED = {"OLD_AGE_PENSION":"sanctioned","VIDHWA_PENSION":"sanctioned",
+                "DISABILITY_PENSION":"sanctioned","MGNREGA":"job_card_issued"}
+def get_application(app_id):
+    c=_conn(); cur=c.cursor()
+    r=cur.execute("SELECT * FROM applications_scheme WHERE id=?",(app_id,)).fetchone()
+    c.close(); return dict(r) if r else None
+def _receipt_shape(row):
+    warn=[]; audit=[]
+    try: warn=(json.loads(row.get("eligibility_json") or "{}")).get("warnings",[])
+    except Exception: pass
+    try: audit=json.loads(row.get("audit_log_json") or "[]")
+    except Exception: pass
+    return {"ok":True,"application_id":row.get("id"),
+            "registration_id":row.get("reg_id_format") or row.get("reg_id_generated"),
+            "status":row.get("status"),"bot_status":row.get("bot_status"),
+            "warnings":warn,"audit":audit,"screenshot_path":row.get("screenshot_path")}
+def apply_bot_result(app_id, ok, bot_reg, screenshot, note=""):
+    ensure_schema_columns()
+    row=get_application(app_id)
+    if not row: return {"ok":False,"error":"application not found"}
+    try: audit=json.loads(row.get("audit_log_json") or "[]")
+    except Exception: audit=[]
+    scheme=row.get("scheme_name")
+    c=_conn(); cur=c.cursor()
+    if ok:
+        new_status=BOT_APPROVED.get(scheme,"approved")
+        audit.append(_event("vision_bot","portal_submission_success","bot_reg=%s shot=%s"%(bot_reg,screenshot)))
+        audit.append(_event("system","status_set",new_status))
+        cur.execute("UPDATE applications_scheme SET bot_status=?, screenshot_path=?, status=?, audit_log_json=? WHERE id=?",
+                    ("success", screenshot or "", new_status, json.dumps(audit), app_id))
+    else:
+        audit.append(_event("vision_bot","no_central_submission", note or "no govt portal configured -> remains under officer review"))
+        cur.execute("UPDATE applications_scheme SET bot_status=?, audit_log_json=? WHERE id=?",
+                    ("pending", json.dumps(audit), app_id))
+    c.commit(); c.close()
+    return _receipt_shape(get_application(app_id))
+
+
+# ---------------- hybrid recommendation layer (ML + keyword-over-catalog) ----------------
+# The 4-class ML model covers the frequent intents; this keyword layer makes ALL 14 catalog
+# schemes recommendable from plain Hinglish/English WITHOUT retraining, and stays in sync with
+# SCHEMAS automatically (a new scheme is recommendable by its own title/summary/category words).
+CONF_FLOOR = 0.30          # ML probability needed to show a scheme card
+INTENT_TO_SCHEME = {"MGNREGA":"MGNREGA","OLD_AGE_PENSION":"OLD_AGE_PENSION","VIDHWA_PENSION":"VIDHWA_PENSION"}
+_STOP = set("the a an of for and or to in on with by from at as is are be this that scheme yojana central government india".split())
+def _norm_words(t):
+    return [w for w in re.findall(r"[a-z0-9]+", (t or "").lower()) if len(w) >= 4 and w not in _STOP]
+_KW_EXTRA = {
+ "MGNREGA":["job card","employment","100 days","unskilled","wage","kaam","rozgar"],
+ "OLD_AGE_PENSION":["old age","senior citizen","60 years","ignoaps","budhapa"],
+ "VIDHWA_PENSION":["widow","widowed","pati mar","husband death","death cert","vidhwa"],
+ "DISABILITY_PENSION":["disability","divyang","disabled","udid","40%","bench mark","viklang"],
+ "PM_KISAN":["kisan","farmer","farm","agriculture","land","khasra","khatauni","6000","samman nidhi","kheti"],
+ "PM_AWAS_GRAMIN":["awas","house","makan","housing","pucca","kutcha","gramin","ghar"],
+ "PM_UJJWALA":["ujjwala","lpg","gas","cylinder","connection","stove","bpl","chulha"],
+ "AYUSHMANN BHARAT":["ayushman","pm-jay","pmjay","health","insurance","hospital","5 lakh","treatment","ilaj"],
+ "SUKANYA SAMRIDDHI":["sukanya","girl child","beti","daughter","savings","deposit","10 years","bachhi"],
+ "ATAL PENSION":["atal","apy","retirement","monthly pension","unorganised","nivesh"],
+ "PM MATRU VANDANA":["matru","maternity","pregnan","anc","mother","child birth","delivery","garbh"],
+ "PM VISHWAKARMA":["vishwakarma","artisan","carpenter","blacksmith","potter","weaver","tailor","cobbler","barber","badhai"],
+ "SKILL INDIA (PMKVY)":["skill","kaushal","pmkvy","training","course","certif","placement","youth","hunar"],
+ "MUDRA LOAN":["mudra","loan","shishu","kishor","tarun","credit","business","enterprise","micro","udham"],
+}
+def recommend_by_keywords(text, top=4):
+    low = (text or "").lower()
+    scored = []
+    for sid, sch in SCHEMAS.items():
+        kws = list(_KW_EXTRA.get(sid, []))
+        kws += _norm_words(sch.get("title","") + " " + sch.get("summary","") + " " + sch.get("category",""))
+        matched = [k for k in kws if k and k in low]
+        if matched:
+            scored.append((len(matched), sid, matched))
+    scored.sort(key=lambda x: -x[0])
+    out = []
+    for hits, sid, matched in scored[:top]:
+        sch = SCHEMAS[sid]
+        out.append({"id": sid, "name": sch["title"], "category": sch["category"],
+                    "can_apply": True, "confidence": None, "source": "keyword",
+                    "score": hits, "matched": matched[:4]})
+    return out

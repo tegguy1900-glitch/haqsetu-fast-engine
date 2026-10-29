@@ -1,0 +1,9 @@
+playwright
+scikit-learn
+pandas
+numpy
+twilio
+python-dotenv
+fpdf
+pytesseract
+Pillow

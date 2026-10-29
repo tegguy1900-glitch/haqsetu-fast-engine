@@ -1,0 +1,10 @@
+true,crop_loss,wage_work,grievance,pm_awas,ujjwala,water_supply,streetlight,mudra,other,ABSTAIN
+crop_loss,0,0,0,0,0,5,0,0,0,11
+wage_work,0,0,0,0,0,0,0,0,0,23
+grievance,0,0,0,0,0,19,0,0,0,16
+pm_awas,0,0,0,35,0,0,0,0,0,0
+ujjwala,0,0,0,0,12,0,0,0,0,10
+water_supply,0,0,0,0,0,22,0,0,0,13
+streetlight,0,0,0,0,0,11,0,0,0,24
+mudra,0,0,0,0,0,0,0,0,0,35
+other,0,0,0,0,0,0,0,0,0,31

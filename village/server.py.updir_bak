@@ -1,0 +1,876 @@
+"""
+HaqSetu v2.0 - F.A.S.T. Engine (restored stable build)
+Pure stdlib HTTP server + SQLite. No frameworks, no MQTT, no FastAPI.
+"""
+import os, json, sqlite3, hashlib, time, traceback, re
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+
+PORT = int(os.environ.get("PORT", os.environ.get("HAQ_VILLAGE_PORT", "8000")))
+HOST = os.environ.get("HOST", "127.0.0.1")
+DB_PATH = "data/haqsetu.db"
+UPLOAD_DIR = "uploads"
+REPORTS_DIR = "reports"
+for d in (UPLOAD_DIR, REPORTS_DIR, "data"):
+    os.makedirs(d, exist_ok=True)
+
+HAS_OCR = False
+HAS_BOT = False
+try:
+    from core.parser import parse_user_input
+    try:
+        from core.parser import parse_image_input
+        HAS_OCR = True
+    except ImportError:
+        print("⚠️ OCR libs missing - image auto-fill disabled.")
+    try:
+        from core.bot_playwright import get_bot
+        HAS_BOT = True
+    except ImportError as e:
+        print("⚠️ Bot module unavailable (%s) - auto-submit disabled." % e)
+    from core.geoutil import calculate_distance, is_within_radius
+    from core.nlp_engine import predict_intent
+except ImportError as e:
+    print("❌ CRITICAL IMPORT ERROR: %s" % e)
+    raise SystemExit(1)
+
+try:
+    from core.sms_service import send_otp
+    HAS_SMS = True
+except ImportError:
+    HAS_SMS = False
+try:
+    from core.pdf_gen import generate_sdm_report
+    HAS_PDF = True
+except ImportError:
+    HAS_PDF = False
+
+_WAL_DONE = False
+def get_db_conn():
+    global _WAL_DONE
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    if not _WAL_DONE:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            _WAL_DONE = True
+        except Exception as e:
+            print("WAL pragma warn:", e)
+    return conn
+
+def init_db():
+    conn = get_db_conn(); c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS tickets_infra (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        description TEXT, photo_path TEXT,
+        geo_lat REAL, geo_lon REAL,
+        status TEXT DEFAULT 'open',
+        fix_geo_lat REAL, fix_geo_lon REAL, otp_code TEXT,
+        timestamp_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS applications_scheme (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        citizen_mobile_hash TEXT, scheme_name TEXT, parsed_data_json TEXT,
+        bot_status TEXT, reg_id_generated TEXT, screenshot_path TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    conn.commit(); conn.close()
+
+def hash_mobile(m): return hashlib.sha256(str(m).encode()).hexdigest()[:16]
+def generate_otp(): return str(int(time.time()) % 10000).zfill(4)
+
+class HaqSetuHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *a): pass
+    def _send_json(self, code, data):
+        body = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def _read_body(self):
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        raw = self.rfile.read(n) if n else b"{}"
+        try: return json.loads(raw.decode("utf-8"))
+        except Exception: return {}
+    def _serve_file(self, path, mime):
+        try:
+            with open(path, "rb") as f: data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except FileNotFoundError:
+            self._send_json(404, {"error": "file not found: " + path})
+
+    def do_GET(self):
+        p = urlparse(self.path).path
+        if p in ("/", "/index.html"):
+            self._serve_file("web_demo/index.html", "text/html")
+        elif p.startswith("/assets/") or p.endswith(".css") or p.endswith(".js"):
+            fn = p.split("/")[-1]
+            mime = "text/css" if fn.endswith(".css") else "application/javascript"
+            self._serve_file("web_demo/" + fn, mime)
+        elif p.startswith("/uploads/"):
+            self._serve_file(UPLOAD_DIR + "/" + p.split("/")[-1], "image/jpeg")
+        elif p.startswith("/reports/"):
+            self._serve_file(REPORTS_DIR + "/" + p.split("/")[-1], "application/pdf")
+        elif p == "/api/agenda":
+            self.handle_get_agenda()
+        elif p == "/api/meeting/list": self.handle_meeting_list()
+        elif p.startswith("/api/meeting/"): self.handle_meeting_get(p)
+        elif p.startswith("/api/scheme/schema"): import core.scheme_registry as _sr; _sr.api_schema(self, p)
+        elif p == "/api/scheme/list": import core.scheme_registry as _sr; _sr.api_list(self)
+        elif p == "/health":
+            self._send_json(200, {"status":"online","engine":"F.A.S.T.","ocr":HAS_OCR,"bot":HAS_BOT})
+        else:
+            self._send_json(404, {"error":"not found"})
+
+    def do_POST(self):
+        p = urlparse(self.path).path
+        d = self._read_body()
+        if p == "/api/voice/match": self.handle_voice_match(d)
+        elif p == "/api/scheme/wizard": self.handle_wizard_step(d)
+        elif p == "/api/scheme/execute": self.handle_execute_bot(d)
+        elif p == "/api/scheme/register": import core.scheme_registry as _sr; _sr.api_register(self, d)
+        elif p == "/api/scheme/attach_bot": self.handle_attach_bot(d)
+        elif p == "/api/infra/create": self.handle_infra_create(d)
+        elif p == "/api/infra/fix": self.handle_infra_fix(d)
+        elif p == "/api/infra/close": self.handle_infra_close(d)
+        elif p == "/api/infra/assign": self.handle_infra_assign(d)
+        elif p == "/api/infra/progress": self.handle_infra_progress(d)
+        elif p == "/api/infra/reject": self.handle_infra_reject(d)
+        elif p == "/api/infra/dispute": self.handle_infra_dispute(d)
+        elif p == "/api/meeting/report": self.handle_generate_report(d)
+        elif p == "/api/meeting/open": self.handle_meeting_open(d)
+        elif p == "/api/meeting/attendance": self.handle_meeting_attendance(d)
+        elif p == "/api/meeting/resolve": self.handle_meeting_resolve(d)
+        elif p == "/api/meeting/close": self.handle_meeting_close(d)
+        elif p == "/api/meeting/ratify": self.handle_meeting_ratify(d)
+        elif p.startswith("/api/meeting/") and p.endswith("/report"): self.handle_meeting_report(d, p)
+        else: self._send_json(404, {"error":"endpoint not found"})
+
+    def handle_voice_match(self, data):
+        t = (data.get("text") or "").strip()
+        if not t:
+            self._send_json(400, {"error": "empty text"}); return
+        import core.scheme_registry as _sr
+        try:
+            r = predict_intent(t); intent = r.get("intent"); conf = float(r.get("confidence") or 0.0)
+            probs = r.get("probabilities") or {}
+        except Exception as e:
+            print("NLP error:", e); intent = "UNKNOWN"; conf = 0.0; probs = {}
+        # Keyword layer over the FULL catalog runs FIRST and grounds every decision.
+        kw = _sr.recommend_by_keywords(t, top=4)
+        # INFRA wins ONLY when no scheme keyword is present AND the text carries a real infra
+        # cue; otherwise a flaky low-confidence INFRA argmax (e.g. "ujjwala gas connection")
+        # would hijack a scheme query, and pure noise (no cue, no scheme word) falls to catalog.
+        _INFRA_CUES = ("handpump","pump","toot","tuta","tuti","break","broken","leak","drain",
+                       "naali","nal","sewer","gutter","road","raasta","pothole","sink","jam",
+                       "block","clog","stagnat","overflow","kharab","bijli","light","pipe")
+        tl = t.lower()
+        infra_cue = any(c in tl for c in _INFRA_CUES)
+        if intent == "INFRA_BROKEN" and not kw and infra_cue:
+            self._send_json(200, {"intent": "INFRA", "message": "Infra issue detected", "confidence": conf}); return
+        # ML candidates above the confidence floor, ranked by probability.
+        ai_cands = []
+        for k, v in sorted(probs.items(), key=lambda kv: -float(kv[1])):
+            sid = _sr.INTENT_TO_SCHEME.get(k)
+            if sid and float(v) >= _sr.CONF_FLOOR:
+                sch = _sr.SCHEMAS[sid]
+                ai_cands.append({"id": sid, "name": sch["title"], "category": sch["category"],
+                                 "can_apply": True, "confidence": round(float(v), 3), "source": "ai"})
+        # Ordering: if ML and catalog AGREE on the top pick, lead with ML (it carries a real
+        # confidence). On DISAGREEMENT (or no ML card), lead with the catalog-grounded keyword,
+        # because the 4-class model is unreliable outside its frequent classes.
+        kw_ids = {c["id"] for c in kw}
+        if ai_cands and ai_cands[0]["id"] in kw_ids:
+            cands = ai_cands + [c for c in kw if c["id"] not in {x["id"] for x in ai_cands}]
+        else:
+            cands = kw + [c for c in ai_cands if c["id"] not in kw_ids]
+        cands = cands[:3]
+        note = ""
+        if not cands:
+            cands = [{"id": "__CATALOG__", "name": "Not sure? Browse all 14 schemes",
+                      "category": "Catalog", "can_apply": True, "confidence": None, "source": "fallback"}]
+            note = "No confident match (best AI score %.2f). Showing the full catalog." % conf
+        elif cands[0].get("source") == "keyword" and conf < _sr.CONF_FLOOR:
+            note = "AI was unsure (%.2f); matched by keywords across the catalog." % conf
+        self._send_json(200, {"intent": intent, "detected_intent": intent, "ai_confidence": conf,
+                              "schemes": cands, "note": note})
+
+    def handle_wizard_step(self, data):
+        step = int(data.get("step", 1) or 1)
+        text = data.get("text","")
+        cur = data.get("accumulated_data",{}) or {}
+        doc = data.get("doc_path")
+        if HAS_OCR and step == 1 and doc and os.path.exists(doc):
+            try:
+                ocr = parse_image_input(doc) or {}
+                for k,v in ocr.items():
+                    if v: cur[k]=v
+                self._send_json(200, {"status":"auto_filled","message":"Details extracted from ID","accumulated_data":cur}); return
+            except Exception as e:
+                print("OCR runtime error:", e)
+        if text:
+            try:
+                parsed = parse_user_input(text) or {}
+                for k,v in parsed.items():
+                    if v: cur[k]=v
+            except Exception as e:
+                print("parse error:", e)
+        self._send_json(200, {"accumulated_data":cur})
+
+    def handle_execute_bot(self, data):
+        sid = data.get("scheme_id"); ud = data.get("user_data"); doc = data.get("doc_path")
+        if not HAS_BOT:
+            self._send_json(503, {"status":"failed","error":"Bot module not installed (playwright)."}); return
+        try:
+            bot = get_bot()
+            res = bot.execute_registration(sid, ud, doc)
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json(500, {"status":"failed","error":str(e)}); return
+        if res.get("status") == "success":
+            conn = get_db_conn(); c = conn.cursor()
+            c.execute("""INSERT INTO applications_scheme
+                (citizen_mobile_hash, scheme_name, parsed_data_json, bot_status, reg_id_generated, screenshot_path)
+                VALUES (?,?,?,?,?,?)""",
+                (hash_mobile((ud or {}).get("mobile","unknown")), sid, json.dumps(ud), "success",
+                 res.get("registration_id"), res.get("screenshot_path")))
+            conn.commit(); conn.close()
+        self._send_json(200 if res.get("status")=="success" else 500, res)
+
+    def handle_attach_bot(self, data):
+        import core.scheme_registry as _sr
+        app_id = data.get("application_id")
+        row = _sr.get_application(app_id)
+        if not row:
+            self._send_json(404, {"ok": False, "error": "application not found"}); return
+        ud = {}
+        try: ud = json.loads(row.get("parsed_data_json") or "{}")
+        except Exception: pass
+        docs = {}
+        try: docs = json.loads(row.get("docs_json") or "{}")
+        except Exception: pass
+        doc = ""
+        for v in docs.values():
+            if isinstance(v, str) and v and not v.startswith("data:"):
+                doc = v; break
+        KNOWN_PORTALS = {"MGNREGA","OLD_AGE_PENSION","VIDHWA_PENSION","DISABILITY_PENSION"}
+        scheme = row.get("scheme_name")
+        if scheme not in KNOWN_PORTALS:
+            rc = _sr.apply_bot_result(app_id, False, None, None,
+                note="no central govt portal configured for %s -> remains under officer review" % scheme)
+            self._send_json(200, rc); return
+        if not HAS_BOT:
+            rc = _sr.apply_bot_result(app_id, False, None, None, note="Vision Bot not installed on this host")
+            self._send_json(200, rc); return
+        try:
+            res = get_bot().execute_registration(scheme, ud, doc)
+        except Exception as e:
+            res = {"status": "error", "error": str(e)[:120]}
+        if isinstance(res, dict) and res.get("status") == "success":
+            rc = _sr.apply_bot_result(app_id, True, res.get("registration_id"), res.get("screenshot_path"))
+        else:
+            note = (res.get("error") if isinstance(res, dict) else None) or "portal submission declined -> officer review"
+            rc = _sr.apply_bot_result(app_id, False, None, None, note=note)
+        self._send_json(200, rc)
+
+    def handle_infra_create(self, data):
+        import core.infra_registry as _ir
+        self._ensure_ticket_cols()
+        desc=(data.get("description") or "").strip()
+        if not desc:
+            self._send_json(400, {"error":"description required"}); return
+        try:
+            lat=float(data.get("lat",0) or 0); lon=float(data.get("lon",0) or 0)
+        except Exception:
+            lat=0.0; lon=0.0
+        cat=data.get("category") or _ir.classify(desc)
+        if cat not in _ir.CATEGORIES: cat="OTHER"
+        sev=(data.get("severity") or "MEDIUM").upper()
+        if sev not in _ir.SEVERITIES: sev="MEDIUM"
+        photo=self._save_photo(data.get("photo"), "tk%d"%int(time.time()))
+        now=time.time(); sla=_ir.sla_for(cat,sev); due=now+sla*3600
+        conn=get_db_conn(); c=conn.cursor()
+        seq=c.execute("SELECT COUNT(*) AS n FROM tickets_infra WHERE category=?",(cat,)).fetchone()["n"]+1
+        wo=_ir.format_wo(cat,seq)
+        audit=[{"ts":time.strftime("%Y-%m-%dT%H:%M:%S"),"actor":data.get("reporter") or "citizen",
+                "event":"ticket_filed","detail":desc[:90]}]
+        c.execute("""INSERT INTO tickets_infra
+            (description,photo_path,geo_lat,geo_lon,status,category,severity,sla_hours,
+             due_at,created_epoch,wo_number,audit_log_json)
+            VALUES (?,?,?,?, 'open',?,?,?,?,?,?,?)""",
+            (desc,photo,lat,lon,cat,sev,sla,due,now,wo,json.dumps(audit)))
+        tid=c.lastrowid; dup=None
+        try:
+            dr=_ir.dup_radius(cat)
+            rows=c.execute("""SELECT id,geo_lat,geo_lon FROM tickets_infra
+                WHERE id<>? AND category=? AND status IN ('open','assigned','in_progress','reopened')""",(tid,cat)).fetchall()
+            cand=[]
+            for r in rows:
+                ok,dist=is_within_radius(lat,lon,r["geo_lat"],r["geo_lon"],radius_meters=dr)
+                if ok: cand.append((dist,r["id"]))
+            if cand:
+                cand.sort(); dup=cand[0][1]
+                audit=audit+[{"ts":time.strftime("%Y-%m-%dT%H:%M:%S"),"actor":"system",
+                    "event":"duplicate_flagged","detail":"linked to #%d within %dm (same fault, not blocked)"%(dup,dr)}]
+                c.execute("UPDATE tickets_infra SET possible_duplicate_of=?, audit_log_json=? WHERE id=?",(dup,json.dumps(audit),tid))
+        except Exception as e:
+            print("dup check error:",e)
+        conn.commit(); conn.close()
+        self._send_json(201, dict(self._enrich(self._get_ticket(tid)), possible_duplicate_of=dup))
+    def handle_infra_fix(self, data):
+        import core.infra_registry as _ir
+        self._ensure_ticket_cols()
+        tid=data.get("ticket_id"); row=self._get_ticket(tid)
+        if not row:
+            self._send_json(404, {"error":"ticket not found"}); return
+        if row["status"] not in ("assigned","in_progress"):
+            self._send_json(409, {"error":"ticket must be assigned/in_progress before marking fixed (now %s)"%row["status"]}); return
+        try:
+            nlat=float(data.get("new_lat",0) or 0); nlon=float(data.get("new_lon",0) or 0)
+        except Exception:
+            nlat=nlon=0.0
+        radius=_ir.geofence(row["category"])
+        ok,dist=is_within_radius(row["geo_lat"],row["geo_lon"],nlat,nlon,radius_meters=radius)
+        if not ok:
+            self._send_json(400, {"error":"GEO_MISMATCH","distance_m":round(dist,1),"required_m":radius,
+                "message":"Repair GPS is %.1fm from the complaint; must be within %dm for %s"%(dist,radius,_ir.label(row["category"]))}); return
+        after=self._save_photo(data.get("fix_photo"), "fix%d"%int(tid))
+        otp=generate_otp(); mob=data.get("citizen_mobile","+919876543210")
+        audit=self._audit(row,"fix_claimed",data.get("engineer") or "JE","geo ok %.1fm; after_photo=%s"%(dist,bool(after)))
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("""UPDATE tickets_infra SET status='awaiting_otp', fix_geo_lat=?, fix_geo_lon=?,
+                     otp_code=?, fix_photo_path=?, audit_log_json=? WHERE id=?""",
+                  (nlat,nlon,otp,after,json.dumps(audit),tid))
+        conn.commit(); conn.close()
+        sms="SIMULATED"
+        if HAS_SMS:
+            try:
+                if send_otp(mob,otp): sms="SENT_REAL_SMS"
+            except Exception as e:
+                sms="SMS_ERROR: %s"%str(e)[:40]
+        self._send_json(200, {"message":"Fix verified at site. SMS: %s"%sms,"otp_preview":otp,
+                              "status":"awaiting_otp","ticket":self._enrich(self._get_ticket(tid))})
+    def handle_infra_close(self, data):
+        import core.infra_registry as _ir
+        self._ensure_ticket_cols()
+        tid=data.get("ticket_id"); row=self._get_ticket(tid)
+        if not row:
+            self._send_json(404, {"error":"ticket not found"}); return
+        if row["status"]!="awaiting_otp":
+            self._send_json(409, {"error":"only awaiting_otp tickets can be citizen-closed (now %s)"%row["status"]}); return
+        entered=str(data.get("otp") or "").strip()
+        if entered!=(row.get("otp_code") or ""):
+            self._send_json(400, {"error":"INVALID_OTP"}); return
+        audit=self._audit(row,"verified_closed","citizen","OTP matched - work confirmed")
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("UPDATE tickets_infra SET status='closed', otp_code=NULL, audit_log_json=? WHERE id=?",(json.dumps(audit),tid))
+        conn.commit(); conn.close()
+        self._send_json(200, {"message":"Ticket closed (citizen-verified).","ticket":self._enrich(self._get_ticket(tid))})
+
+    def _ensure_ticket_cols(self):
+        cols=[("category","TEXT DEFAULT 'OTHER'"),("severity","TEXT DEFAULT 'MEDIUM'"),
+              ("sla_hours","INTEGER"),("due_at","REAL"),("created_epoch","REAL"),("wo_number","TEXT"),
+              ("assigned_to","TEXT"),("audit_log_json","TEXT"),("fix_photo_path","TEXT"),
+              ("possible_duplicate_of","INTEGER"),("reject_reason","TEXT"),("reopened_count","INTEGER DEFAULT 0")]
+        try:
+            conn=get_db_conn(); c=conn.cursor()
+            have={r["name"] for r in c.execute("PRAGMA table_info(tickets_infra)")}
+            for col,typ in cols:
+                if col not in have:
+                    try: c.execute("ALTER TABLE tickets_infra ADD COLUMN %s %s"%(col,typ))
+                    except sqlite3.OperationalError: pass
+            conn.commit(); conn.close()
+        except Exception as e:
+            print("ticket migrate warn:",e)
+    def _get_ticket(self, tid):
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("SELECT * FROM tickets_infra WHERE id=?",(tid,))
+        r=c.fetchone(); conn.close()
+        return dict(r) if r else None
+    def _audit(self, row, event, actor="system", detail=""):
+        try: a=json.loads((row or {}).get("audit_log_json") or "[]")
+        except Exception: a=[]
+        a.append({"ts":time.strftime("%Y-%m-%dT%H:%M:%S"),"actor":actor,"event":event,"detail":detail})
+        return a
+    def _save_photo(self, datauri, prefix):
+        if not datauri or not str(datauri).startswith("data:"): return ""
+        import base64
+        try:
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            fn=os.path.join(UPLOAD_DIR, "%s_%d.jpg"%(prefix, int(time.time()*1000)%10000000))
+            with open(fn,"wb") as fh: fh.write(base64.b64decode(str(datauri).split(",",1)[1]))
+            return fn
+        except Exception as e:
+            print("photo save error:", e); return ""
+    def _enrich(self, row):
+        import core.infra_registry as _ir
+        if not row: return {}
+        r=dict(row)
+        r["ticket_id"]=r.get("id")
+        try: r["audit"]=json.loads(r.get("audit_log_json") or "[]")
+        except Exception: r["audit"]=[]
+        now=time.time(); term=_ir.is_terminal(r.get("status"))
+        due=r.get("due_at") or 0
+        r["breached"]=(not term) and due>0 and now>due
+        ce=r.get("created_epoch") or now
+        r["age_hours"]=round((now-ce)/3600.0,1)
+        r["category_label"]=_ir.label(r.get("category"))
+        r["hw_intent"]=_ir.hw_intent(r.get("category"))
+        r["severity_rank"]=_ir.SEVERITY_RANK.get(r.get("severity"),0)
+        r.pop("audit_log_json",None)
+        return r
+    def handle_infra_assign(self, data):
+        import core.infra_registry as _ir
+        self._ensure_ticket_cols()
+        tid=data.get("ticket_id"); row=self._get_ticket(tid)
+        if not row: self._send_json(404,{"error":"ticket not found"}); return
+        if not _ir.allowed(row["status"],"assigned"):
+            self._send_json(409,{"error":"illegal transition %s->assigned"%row["status"]}); return
+        eng=data.get("engineer") or "JE"
+        audit=self._audit(row,"assigned",data.get("actor") or "dispatcher","to %s"%eng)
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("UPDATE tickets_infra SET status='assigned', assigned_to=?, audit_log_json=? WHERE id=?",(eng,json.dumps(audit),tid))
+        conn.commit(); conn.close()
+        self._send_json(200,self._enrich(self._get_ticket(tid)))
+    def handle_infra_progress(self, data):
+        import core.infra_registry as _ir
+        self._ensure_ticket_cols()
+        tid=data.get("ticket_id"); row=self._get_ticket(tid)
+        if not row: self._send_json(404,{"error":"ticket not found"}); return
+        if not _ir.allowed(row["status"],"in_progress"):
+            self._send_json(409,{"error":"illegal transition %s->in_progress"%row["status"]}); return
+        audit=self._audit(row,"work_started",data.get("engineer") or "JE","crew dispatched to site")
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("UPDATE tickets_infra SET status='in_progress', audit_log_json=? WHERE id=?",(json.dumps(audit),tid))
+        conn.commit(); conn.close()
+        self._send_json(200,self._enrich(self._get_ticket(tid)))
+    def handle_infra_reject(self, data):
+        import core.infra_registry as _ir
+        self._ensure_ticket_cols()
+        tid=data.get("ticket_id"); row=self._get_ticket(tid)
+        if not row: self._send_json(404,{"error":"ticket not found"}); return
+        if not _ir.allowed(row["status"],"rejected"):
+            self._send_json(409,{"error":"illegal transition %s->rejected"%row["status"]}); return
+        reason=data.get("reason") or "out of jurisdiction"
+        audit=self._audit(row,"rejected",data.get("actor") or "JE",reason)
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("UPDATE tickets_infra SET status='rejected', reject_reason=?, audit_log_json=? WHERE id=?",(reason,json.dumps(audit),tid))
+        conn.commit(); conn.close()
+        self._send_json(200,self._enrich(self._get_ticket(tid)))
+    def handle_infra_dispute(self, data):
+        import core.infra_registry as _ir
+        self._ensure_ticket_cols()
+        tid=data.get("ticket_id"); row=self._get_ticket(tid)
+        if not row: self._send_json(404,{"error":"ticket not found"}); return
+        if not _ir.allowed(row["status"],"reopened"):
+            self._send_json(409,{"error":"can only dispute an awaiting_otp or closed ticket (now %s)"%row["status"]}); return
+        reason=data.get("reason") or "work not actually done"
+        cnt=(row.get("reopened_count") or 0)+1
+        audit=self._audit(row,"reopened",data.get("actor") or "citizen","dispute #%d: %s"%(cnt,reason))
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("""UPDATE tickets_infra SET status='reopened', reopened_count=?, otp_code=NULL,
+                     reject_reason=NULL, audit_log_json=? WHERE id=?""",(cnt,json.dumps(audit),tid))
+        conn.commit(); conn.close()
+        self._send_json(200,self._enrich(self._get_ticket(tid)))
+    def handle_get_agenda(self):
+        self._ensure_ticket_cols()
+        conn=get_db_conn(); c=conn.cursor()
+        c.execute("SELECT * FROM tickets_infra ORDER BY id DESC")
+        tickets=[self._enrich(dict(x)) for x in c.fetchall()]
+        c.execute("SELECT * FROM applications_scheme ORDER BY created_at DESC")
+        apps=[dict(x) for x in c.fetchall()]
+        conn.close()
+        tickets.sort(key=lambda t:(0 if t.get("breached") else 1, -t.get("severity_rank",0), t.get("age_hours",0)))
+        self._send_json(200, {"tickets":tickets,"applications":apps})
+    def handle_generate_report(self, data):
+        if not HAS_PDF:
+            self._send_json(500, {"error":"PDF library (fpdf) missing"}); return
+        try:
+            fp = generate_sdm_report()
+            self._send_json(200, {"status":"success","message":"Report generated","download_url":"/reports/"+os.path.basename(fp)})
+        except Exception as e:
+            traceback.print_exc(); self._send_json(500, {"error": str(e)})
+
+    # ---------------- MEETING LIFECYCLE (realistic panchayat governance) ----------------
+    def _ensure_meeting_table(self):
+        try:
+            conn = get_db_conn(); c = conn.cursor()
+            c.execute("""CREATE TABLE IF NOT EXISTS meetings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mtype TEXT, title TEXT, venue TEXT, chair TEXT,
+                status TEXT DEFAULT 'draft',
+                enrolled_json TEXT, attendance_json TEXT,
+                quorum_required INTEGER, quorum_present INTEGER,
+                agenda_json TEXT, resolutions_json TEXT, action_items_json TEXT,
+                minutes_text TEXT, head_hash TEXT, chain_json TEXT,
+                statutory_note TEXT, last_meeting_iso TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                closed_at TEXT, ratified_at TEXT)""")
+            conn.commit(); conn.close()
+        except Exception as e:
+            print("meeting table warn:", e)
+    def _mrow(self, mid):
+        conn = get_db_conn(); c = conn.cursor()
+        c.execute("SELECT * FROM meetings WHERE id=?", (mid,))
+        r = c.fetchone(); conn.close()
+        if not r: return None
+        d = dict(r)
+        for k in ("enrolled","attendance","agenda","resolutions","action_items","chain"):
+            try: d[k] = json.loads(d.get(k+"_json") or "[]")
+            except Exception: d[k] = []
+        d.pop("enrolled_json",None); d.pop("attendance_json",None); d.pop("agenda_json",None)
+        d.pop("resolutions_json",None); d.pop("action_items_json",None); d.pop("chain_json",None)
+        return d
+    def _msave(self, mid, **cols):
+        conn = get_db_conn(); c = conn.cursor()
+        sets = ", ".join("%s=?" % k for k in cols); vals = list(cols.values()) + [mid]
+        c.execute("UPDATE meetings SET %s WHERE id=?" % sets, vals)
+        conn.commit(); conn.close()
+    def _live_snapshot(self):
+        conn = get_db_conn(); c = conn.cursor()
+        c.execute("SELECT * FROM tickets_infra ORDER BY id DESC")
+        tickets = [self._enrich(dict(x)) for x in c.fetchall()]
+        c.execute("SELECT * FROM applications_scheme ORDER BY created_at DESC")
+        apps = [dict(x) for x in c.fetchall()]
+        conn.close()
+        prior = []
+        for m in reversed(self._meeting_rows()):
+            if m.get("status") in ("closed","ratified"):
+                prior = [a for a in (m.get("action_items") or []) if a.get("status") != "done"]
+                break
+        return {"tickets": tickets, "applications": apps, "prior_actions": prior}
+    def _meeting_rows(self):
+        self._ensure_meeting_table()
+        conn = get_db_conn(); c = conn.cursor()
+        c.execute("SELECT * FROM meetings ORDER BY id DESC")
+        rows = [self._mrow(x["id"]) for x in c.fetchall()]
+        conn.close(); return rows
+    def _stamp_ticket(self, ref, event, detail):
+        # write-back onto a referenced WORK ORDER (infra side only; never flips scheme status)
+        try:
+            conn = get_db_conn(); c = conn.cursor()
+            row = None
+            if str(ref).startswith("WO/"):
+                c.execute("SELECT id,audit_log_json FROM tickets_infra WHERE wo_number=?", (ref,))
+            else:
+                c.execute("SELECT id,audit_log_json FROM tickets_infra WHERE id=?", (int(ref),))
+            row = c.fetchone()
+            if row:
+                try: a = json.loads(row["audit_log_json"] or "[]")
+                except Exception: a = []
+                a.append({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "actor": "gram_sabha",
+                          "event": event, "detail": detail})
+                c.execute("UPDATE tickets_infra SET audit_log_json=? WHERE id=?", (json.dumps(a), row["id"]))
+                conn.commit()
+            conn.close()
+        except Exception as e:
+            print("stamp_ticket warn:", e)
+
+    def handle_meeting_open(self, data):
+        import core.meeting_registry as _mr
+        self._ensure_meeting_table()
+        mtype = data.get("mtype") or "PANCHAYAT_BODY"
+        if mtype not in _mr.MEETING_TYPES: mtype = "PANCHAYAT_BODY"
+        enrolled = data.get("enrolled") or []
+        if isinstance(enrolled, int): enrolled = ["M%d" % i for i in range(enrolled)]
+        req = _mr.compute_quorum(mtype, len(enrolled))
+        snap = self._live_snapshot()
+        agenda = _mr.build_agenda(snap, mtype)
+        cad_ok, cad_due, cad_note = _mr.statutory_status(mtype, data.get("last_meeting_iso"))
+        conn = get_db_conn(); c = conn.cursor()
+        open_payload = {"mtype":mtype,"enrolled":len(enrolled),"quorum_required":req,
+                        "agenda_items":len(agenda),"cadence":cad_note}
+        _h = hashlib.sha256((_mr.GENESIS + _mr._canonical(open_payload)).encode("utf-8")).hexdigest()
+        open_chain = [{"seq":0,"kind":"open","prev_hash":_mr.GENESIS,"payload":open_payload,"hash":_h}]
+        cols = ["mtype","title","venue","chair","status","enrolled_json","quorum_required",
+                "quorum_present","agenda_json","resolutions_json","action_items_json",
+                "chain_json","statutory_note","last_meeting_iso"]
+        vals = [mtype, data.get("title") or _mr.label(mtype), data.get("venue") or "Panchayat Bhawan",
+                data.get("chair") or "Sarpanch", "opened", json.dumps(enrolled), req,
+                0, json.dumps(agenda), "[]", "[]", json.dumps(open_chain), cad_note,
+                data.get("last_meeting_iso")]
+        assert len(cols)==len(vals), "column/param count mismatch %d/%d"%(len(cols),len(vals))
+        ph = ",".join(["?"]*len(vals))
+        c.execute("INSERT INTO meetings (%s) VALUES (%s)"%(",".join(cols),ph), vals)
+        mid = c.lastrowid; conn.commit(); conn.close()
+        self._send_json(201, {"meeting_id": mid, "status": "opened", "mtype": mtype,
+                              "quorum_required": req, "enrolled": len(enrolled),
+                              "agenda_items": len(agenda), "cadence_ok": cad_ok, "cadence_note": cad_note,
+                              "agenda": agenda})
+    def handle_meeting_attendance(self, data):
+        import core.meeting_registry as _mr
+        self._ensure_meeting_table()
+        mid = data.get("meeting_id"); m = self._mrow(mid)
+        if not m: self._send_json(404, {"error": "meeting not found"}); return
+        if m["status"] not in ("opened", "in_session"):
+            self._send_json(409, {"error": "attendance only while opened/in_session (now %s)" % m["status"]}); return
+        present = data.get("present") or []
+        met, req, p = _mr.check_quorum(m["mtype"], len(m["enrolled"]), len(present))
+        new_status = "in_session" if met else "opened"
+        chain = _mr.chain_append(m["chain"], "attendance", {"present": present, "quorum_met": met, "required": req})
+        self._msave(mid, attendance_json=json.dumps(present), quorum_present=p,
+                    status=new_status, chain_json=json.dumps(chain))
+        self._send_json(200, {"meeting_id": mid, "status": new_status, "quorum_met": met,
+                              "required": req, "present": p})
+    def handle_meeting_resolve(self, data):
+        import core.meeting_registry as _mr
+        self._ensure_meeting_table()
+        mid = data.get("meeting_id"); m = self._mrow(mid)
+        if not m: self._send_json(404, {"error": "meeting not found"}); return
+        if m["status"] != "in_session":
+            self._send_json(409, {"error": "resolutions only during in_session (quorum not met? now %s)" % m["status"]}); return
+        rtype = data.get("type") or "routine"
+        rt = _mr.RESOLUTION_TYPES.get(rtype, _mr.RESOLUTION_TYPES["routine"])
+        votes = data.get("votes") or {}
+        out = _mr.resolve_outcome(votes.get("aye"), votes.get("no"), votes.get("abstain"), rt["threshold"])
+        refs = data.get("linked_refs") or []
+        if not rt["can_link"]: refs = []
+        rid = len(m["resolutions"]) + 1
+        res = {"id": rid, "text": data.get("text") or "", "type": rtype,
+               "proposer": data.get("proposer") or "", "seconder": data.get("seconder") or "",
+               "outcome": out["outcome"], "votes": out, "linked_refs": refs}
+        chain = _mr.chain_append(m["chain"], "resolution", res)
+        actions = list(m["action_items"] or [])
+        if out["outcome"] == "carried":
+            for ref in refs:
+                self._stamp_ticket(ref, "meeting_resolution",
+                                   "Carried in %s (#%d): %s" % (_mr.label(m["mtype"]), mid, res["text"][:80]))
+                actions.append({"resolution_id": rid, "ref": ref,
+                                "action": "Execute: %s" % res["text"][:80],
+                                "owner": data.get("owner") or m["chair"], "due": data.get("due") or "",
+                                "status": "open"})
+        resols = list(m["resolutions"] or []) + [res]
+        self._msave(mid, resolutions_json=json.dumps(resols), action_items_json=json.dumps(actions),
+                    chain_json=json.dumps(chain))
+        self._send_json(200, {"meeting_id": mid, "resolution": res, "outcome": out["outcome"],
+                              "actions_added": len([a for a in actions if a["resolution_id"] == rid])})
+    def handle_meeting_close(self, data):
+        import core.meeting_registry as _mr
+        self._ensure_meeting_table()
+        mid = data.get("meeting_id"); m = self._mrow(mid)
+        if not m: self._send_json(404, {"error": "meeting not found"}); return
+        if not _mr.allowed(m["status"], "closed"):
+            self._send_json(409, {"error": "illegal transition %s->closed" % m["status"]}); return
+        carried = [r for r in m["resolutions"] if r["outcome"] == "carried"]
+        defeated = [r for r in m["resolutions"] if r["outcome"] == "defeated"]
+        tabled = [r for r in m["resolutions"] if r["outcome"] == "tabled"]
+        lines = ["MINUTES OF %s - %s" % (_mr.label(m["mtype"]).upper(), m["title"]),
+                 "Venue: %s | Chair: %s | Status: %s" % (m["venue"], m["chair"], m["status"]),
+                 "Attendance: %d present / %d required (quorum %s)" % (
+                     m["quorum_present"], m["quorum_required"],
+                     "MET" if m["quorum_present"] >= m["quorum_required"] else "NOT MET"),
+                 "", "AGENDA:"]
+        for i, it in enumerate(m["agenda"] or [], 1): lines.append("  %d. [%s] %s" % (i, it["kind"], it["text"]))
+        lines += ["", "RESOLUTIONS CARRIED (%d):" % len(carried)]
+        for r in carried: lines.append("  R%d. %s  (aye %d / no %d / abst %d)%s" % (
+            r["id"], r["text"], r["votes"]["aye"], r["votes"]["no"], r["votes"]["abstain"],
+            ("  -> acts on " + ", ".join(map(str, r["linked_refs"]))) if r["linked_refs"] else ""))
+        lines += ["", "RESOLUTIONS DEFEATED (%d):" % len(defeated)]
+        for r in defeated: lines.append("  R%d. %s  (aye %d / no %d)" % (r["id"], r["text"], r["votes"]["aye"], r["votes"]["no"]))
+        if tabled: lines += ["", "TABLED (%d):" % len(tabled)] + ["  R%d. %s" % (r["id"], r["text"]) for r in tabled]
+        lines += ["", "ACTION ITEMS (%d):" % len(m["action_items"] or [])]
+        for a in (m["action_items"] or []): lines.append("  - %s | owner %s | ref %s" % (a["action"], a["owner"], a.get("ref")))
+        lines += ["", "Seal: local hash chain (%d links); head %s" % (len(m["chain"]), (m["chain"][-1]["hash"][:16] if m["chain"] else "none")),
+                  "Cadence: %s" % (m.get("statutory_note") or "")]
+        minutes = "\n".join(lines)
+        chain = _mr.chain_append(m["chain"], "minutes",
+                                 {"agenda": m["agenda"], "attendance": m["attendance"],
+                                  "resolution_ids": [r["id"] for r in m["resolutions"]],
+                                  "statutory_note": m.get("statutory_note")})
+        head = chain[-1]["hash"]
+        self._msave(mid, status="closed", minutes_text=minutes, head_hash=head,
+                    chain_json=json.dumps(chain), closed_at=_mr._now())
+        self._send_json(200, {"meeting_id": mid, "status": "closed", "head_hash": head,
+                              "links": len(chain), "carried": len(carried), "defeated": len(defeated)})
+    def handle_meeting_ratify(self, data):
+        import core.meeting_registry as _mr
+        self._ensure_meeting_table()
+        mid = data.get("meeting_id"); m = self._mrow(mid)
+        if not m: self._send_json(404, {"error": "meeting not found"}); return
+        if not _mr.allowed(m["status"], "ratified"):
+            self._send_json(409, {"error": "only a closed meeting can be ratified (now %s)" % m["status"]}); return
+        self._msave(mid, status="ratified", ratified_at=_mr._now())
+        self._send_json(200, {"meeting_id": mid, "status": "ratified"})
+    def handle_meeting_list(self):
+        rows = self._meeting_rows()
+        self._send_json(200, {"meetings": [{"id": r["id"], "mtype": r["mtype"], "title": r["title"],
+                                            "status": r["status"], "quorum_met": (r["quorum_present"] or 0) >= (r["quorum_required"] or 0),
+                                            "resolutions": len(r["resolutions"] or []), "head_hash": (r["head_hash"] or "")[:16],
+                                            "created_at": r.get("created_at")} for r in rows]})
+    def handle_meeting_get(self, p):
+        import core.meeting_registry as _mr
+        self._ensure_meeting_table()
+        try: mid = int(p.rsplit("/", 1)[-1])
+        except Exception: self._send_json(400, {"error": "bad meeting id"}); return
+        m = self._mrow(mid)
+        if not m: self._send_json(404, {"error": "meeting not found"}); return
+        chain_ok, broken_at, chain_msg = _mr.chain_verify(m["chain"])
+        content_ok, content_msg = _mr.content_check(m)
+        m["integrity"] = {"chain_ok": chain_ok, "content_ok": content_ok,
+                          "broken_at": broken_at, "chain_msg": chain_msg, "content_msg": content_msg,
+                          "head_hash": m["head_hash"], "links": len(m["chain"])}
+        self._send_json(200, m)
+
+    # ---------------- SDM REPORT FROM SEALED MINUTES (render + sealed dispatch) ----------------
+    def _ensure_meeting_report_cols(self):
+        cols=[("report_path","TEXT"),("dispatch_json","TEXT"),("sdm_recipient","TEXT")]
+        try:
+            conn=get_db_conn(); c=conn.cursor()
+            have={r["name"] for r in c.execute("PRAGMA table_info(meetings)")}
+            for col,typ in cols:
+                if col not in have:
+                    try: c.execute("ALTER TABLE meetings ADD COLUMN %s %s"%(col,typ))
+                    except sqlite3.OperationalError: pass
+            conn.commit(); conn.close()
+        except Exception as e:
+            print("meeting report cols warn:", e)
+    def _affected_tickets(self, mid):
+        out=[]
+        try:
+            conn=get_db_conn(); c=conn.cursor()
+            c.execute("SELECT id,wo_number,description,status,category_label,audit_log_json FROM tickets_infra")
+            tag="#%d"%int(mid)
+            for r in c.fetchall():
+                try: aud=json.loads(r["audit_log_json"] or "[]")
+                except Exception: aud=[]
+                if any((e.get("actor")=="gram_sabha" and tag in (e.get("detail") or "")) for e in aud):
+                    out.append({"wo": r["wo_number"] or ("#%s"%r["id"]), "description": (r["description"] or "")[:80],
+                                "status": r["status"], "category_label": r.get("category_label") or r.get("category") or ""})
+            conn.close()
+        except Exception as e:
+            print("affected tickets warn:", e)
+        return out
+    def _render_sdm_pdf(self, rep, out_path):
+        from fpdf import FPDF
+        pdf=FPDF(format="A4"); pdf.set_auto_page_break(auto=True, margin=14)
+        pdf.add_page()
+        def line(txt, size=9, style="", align="L", h=5):
+            pdf.set_font("Helvetica", style, size); pdf.cell(0, h, txt, align=align); pdf.ln(h)
+        def kv(k, v, size=9):
+            pdf.set_font("Helvetica","B",size); pdf.cell(58,5,k)
+            pdf.set_font("Helvetica","",size); pdf.cell(0,5,str(v)); pdf.ln(5)
+        def rule():
+            pdf.set_draw_color(120,120,120); pdf.line(pdf.l_margin, pdf.get_y(), pdf.w-pdf.r_margin, pdf.get_y()); pdf.ln(3)
+        line("GOVERNMENT OF UTTAR PRADESH - THREE-TIER PANCHAYATI RAJ", 8, "", "C", 4)
+        line("GRAM PANCHAYAT RECORD", 8, "", "C", 4)
+        rule()
+        line(rep["title"], 13, "B", "C", 8)
+        line(rep["subtitle"], 9, "I", "C", 6)
+        rule()
+        line("MEETING PARTICULARS", 10, "B", "L", 6)
+        for k,v in rep["meta_lines"]: kv(k,v)
+        q=rep["quorum"]
+        line("QUORUM", 10, "B", "L", 6)
+        kv("Required", q["required"]); kv("Present", q["present"])
+        pdf.set_font("Helvetica","B",9); pdf.cell(58,5,"Met")
+        pdf.set_text_color(20,130,40) if q["met"] else pdf.set_text_color(180,30,30)
+        pdf.set_font("Helvetica","B",9); pdf.cell(0,5,"YES" if q["met"] else "NO"); pdf.set_text_color(0,0,0); pdf.ln(5)
+        rule()
+        line("AGENDA (auto-built from the live backlog at open)", 10, "B", "L", 6)
+        if rep["agenda"]:
+            for a in rep["agenda"]: pdf.set_font("Helvetica","",8); pdf.multi_cell(0,4,"  - "+a)
+        else: line("  (none)",8)
+        rule()
+        s=rep["seal"]
+        line("RESOLUTIONS  (carried %d / defeated %d / tabled %d)"%(s["carried"],s["defeated"],s["tabled"]), 10, "B", "L", 6)
+        for r in rep["resolutions"]:
+            v=r.get("votes") or {}
+            oc=r.get("outcome","")
+            col=(20,130,40) if oc=="carried" else ((180,30,30) if oc=="defeated" else (120,120,120))
+            pdf.set_font("Helvetica","B",9); pdf.set_text_color(*col)
+            pdf.cell(0,5,"R%s  [%s]  %s"%(r.get("id"), oc.upper(), (r.get("type") or "routine"))); pdf.ln(5)
+            pdf.set_text_color(0,0,0); pdf.set_font("Helvetica","",8)
+            pdf.multi_cell(0,4,"    "+(r.get("text") or ""))
+            refs=", ".join(map(str, r.get("linked_refs") or [])) or "-"
+            pdf.set_font("Helvetica","",7); pdf.set_text_color(90,90,90)
+            pdf.cell(0,4,"    votes aye %s / no %s / abstain %s   |   proposer %s / seconder %s   |   acts on %s"%(
+                v.get("aye",0),v.get("no",0),v.get("abstain",0), r.get("proposer") or "-", r.get("seconder") or "-", refs))
+            pdf.set_text_color(0,0,0); pdf.ln(5)
+        rule()
+        line("ACTION ITEMS", 10, "B", "L", 6)
+        if rep["action_items"]:
+            for a in rep["action_items"]:
+                pdf.set_font("Helvetica","",8); pdf.multi_cell(0,4,"  - %s  (owner: %s | ref: %s | due: %s)"%(
+                    a.get("action",""), a.get("owner",""), a.get("ref","-"), a.get("due","-")))
+        else: line("  (none)",8)
+        rule()
+        line("WORK ORDERS TOUCHED BY CARRIED RESOLUTIONS", 10, "B", "L", 6)
+        if rep["affected"]:
+            for a in rep["affected"]:
+                pdf.set_font("Helvetica","",8); pdf.multi_cell(0,4,"  - %s  [%s / %s]  %s"%(
+                    a.get("wo"), a.get("category_label") or "-", a.get("status") or "-", a.get("description") or ""))
+        else: line("  (no carried resolution linked a work order)",8)
+        rule()
+        line("SEAL AND INTEGRITY", 10, "B", "L", 6)
+        kv("Minutes seal head", "(see below)", 8)
+        pdf.set_font("Courier","",7); pdf.set_text_color(40,40,40)
+        pdf.multi_cell(0,3.5, s["minutes_head"] or "(none)"); pdf.set_text_color(0,0,0)
+        kv("Chain links at report", s["links_at_report"], 8)
+        pdf.set_font("Helvetica","B",8); pdf.cell(58,5,"Verified")
+        okc=(20,130,40) if (s["chain_ok"] and s["content_ok"]) else (180,30,30)
+        pdf.set_text_color(*okc); pdf.cell(0,5, "CHAIN OK / CONTENT OK" if (s["chain_ok"] and s["content_ok"]) else "FAILED"); pdf.set_text_color(0,0,0); pdf.ln(5)
+        rule()
+        d=rep["dispatch"]
+        line("DISPATCH TO SDM", 10, "B", "L", 6)
+        kv("Recipient", d["recipient"], 8); kv("Channel", d["channel"], 8)
+        kv("Dispatched at", d["generated_at"], 8)
+        rule()
+        line("VERIFICATION", 10, "B", "L", 6)
+        pdf.set_font("Helvetica","",8); pdf.multi_cell(0,4, rep["verification"])
+        rule()
+        line("NOTES AND BOUNDARIES", 9, "B", "L", 5)
+        for b in rep["boundaries"]:
+            pdf.set_font("Helvetica","",7); pdf.set_text_color(90,90,90); pdf.multi_cell(0,3.5,"  * "+b); pdf.set_text_color(0,0,0)
+        pdf.ln(2); line("End of report - generated %s"%rep["meta_lines"][-1][1], 7, "I", "C", 4)
+        pdf.output(out_path)
+    def handle_meeting_report(self, data, p):
+        import core.meeting_registry as _mr
+        self._ensure_meeting_table(); self._ensure_meeting_report_cols()
+        try: mid=int(p.strip("/").split("/")[2])
+        except Exception: self._send_json(400, {"error":"bad meeting id"}); return
+        m=self._mrow(mid)
+        if not m: self._send_json(404, {"error":"meeting not found"}); return
+        if m["status"] not in ("closed","ratified"):
+            self._send_json(409, {"error":"only a sealed meeting (closed or ratified) can be reported to the SDM (now %s)"%m["status"]}); return
+        affected=self._affected_tickets(mid)
+        now_iso=_mr._now()
+        rep=_mr.compose_sdm_report(m, affected, now_iso)
+        os.makedirs("reports", exist_ok=True)
+        fname="sdm_meeting_%d_%d.pdf"%(mid, int(time.time()))
+        relpath=os.path.join("reports", fname)
+        try:
+            self._render_sdm_pdf(rep, relpath)
+        except Exception as e:
+            self._send_json(503, {"error":"pdf_unavailable","message":"fpdf2 not installed or render failed: %s"%str(e)[:120]}); return
+        size=os.path.getsize(relpath) if os.path.exists(relpath) else 0
+        recip=(data.get("sdm_recipient") or _mr.SDM_RECIPIENT_DEFAULT)
+        payload={"recipient":recip,"channel":_mr.SDM_CHANNEL_MOCK,"minutes_head":m["head_hash"],
+                 "report_path":relpath,"meeting_id":mid,"generated_at":now_iso}
+        chain=_mr.chain_append(m["chain"], "report_dispatched", payload)
+        self._msave(mid, report_path=relpath, dispatch_json=json.dumps(payload),
+                    sdm_recipient=recip, chain_json=json.dumps(chain))
+        cv=_mr.chain_verify(chain); cc=_mr.content_check({**m, "chain":chain})
+        self._send_json(200, {"ok":True,"meeting_id":mid,"download_url":"/reports/"+fname,
+            "message":"SDM report generated from sealed minutes; dispatch sealed.",
+            "recipient":recip,"minutes_head":m["head_hash"],"links_after":len(chain),
+            "pdf_bytes":size,
+            "integrity":{"chain_ok":cv[0],"content_ok":cc[0],"chain_msg":cv[2],"content_msg":cc[1]}})
+
+if __name__ == "__main__":
+    init_db()
+    srv = ThreadingHTTPServer((HOST, PORT), HaqSetuHandler)
+    print("🏛️  HAQSETU F.A.S.T. ENGINE (v2 stable) RUNNING")
+    print("   🌐 URL : http://%s:%d" % (HOST, PORT))
+    print("   🗄️  DB  : %s" % DB_PATH)
+    print("   🤖 Bot: %s | 📱 SMS: %s | 📄 PDF: %s | 👁️ OCR: %s" % (
+        "Ready" if HAS_BOT else "OFF", "Active" if HAS_SMS else "Simulated",
+        "Ready" if HAS_PDF else "OFF", "On" if HAS_OCR else "Off"))
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\n👋 shutting down"); srv.shutdown()

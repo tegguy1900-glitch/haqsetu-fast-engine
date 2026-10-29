@@ -1,0 +1,26 @@
+scheme: crop_loss
+state: haryana
+rules:
+  - id: cl_001
+    description: "Farmer reports crop loss exceeding 33 percent due to a notified natural calamity."
+    when:
+      - field: crop_loss_percentage
+        op: gte
+        value: 33
+    outcome: include
+    documents: [land_record, crop_loss_photo, bank_passbook]
+    desk: patwari
+    source:
+      doc: "Pradhan Mantri Fasal Bima Yojana (PMFBY) Operational Guidelines"
+      clause: "Section 4.1 - Assessment of Crop Loss"
+      url: "https://pmfby.gov.in/guidelines"
+    verified_on: 2026-10-08
+    verified_by: ["Ishaan", "Samyak"]
+    expires_on: 2027-01-06
+    clock_hours: 72
+    contact: "14447"
+    test_vectors:
+      - input: {crop_loss_percentage: 40}
+        expect: include
+      - input: {crop_loss_percentage: 20}
+        expect: needs_official_decision

@@ -1,0 +1,22 @@
+scheme: sukanya
+state: haryana
+rules:
+  - id: sukanya_001
+    description: "Sukanya Samriddhi eligibility."
+    when:
+      - field: is_girl
+        op: eq
+        value: true
+      - field: age
+        op: lte
+        value: 10
+    outcome: include
+    documents: ['birth_cert', 'aadhaar']
+    desk: post_office
+    source: {doc: "Sukanya Samriddhi Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

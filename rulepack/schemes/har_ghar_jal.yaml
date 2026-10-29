@@ -1,0 +1,19 @@
+scheme: har_ghar_jal
+state: haryana
+rules:
+  - id: har_ghar_jal_001
+    description: "Har Ghar Jal eligibility."
+    when:
+      - field: has_tap_water
+        op: eq
+        value: false
+    outcome: include
+    documents: ['aadhaar']
+    desk: water_dept
+    source: {doc: "Har Ghar Jal Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

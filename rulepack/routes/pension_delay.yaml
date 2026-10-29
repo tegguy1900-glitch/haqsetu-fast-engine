@@ -1,0 +1,21 @@
+scheme: pension_delay
+state: haryana
+rules:
+  - id: pension_delay_001
+    description: "Pension Delay grievance."
+    when:
+      - field: pension_delayed
+        op: eq
+        value: true
+    outcome: verify
+    documents: []
+    desk: bdo
+    clock_hours: 72
+    contact: "Grievance Officer"
+    source: {doc: "Civic Guidelines", clause: "SLA", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

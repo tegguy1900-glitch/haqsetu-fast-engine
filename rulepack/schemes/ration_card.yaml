@@ -1,0 +1,52 @@
+scheme: ration_card
+state: haryana
+rules:
+  - id: rat_001
+    description: "Haryana domiciled household with no ration card. Plan an application on the Saral portal. Card type depends on income; sources disagree on limits, so every outcome here stays verify."
+    when:
+      - field: haryana_domicile
+        op: eq
+        value: true
+      - field: has_ration_card
+        op: eq
+        value: false
+    outcome: verify
+    documents: [aadhaar_card, income_certificate, bank_passbook, passport_photo]
+    desk: saral_portal_via_csc
+    source:
+      doc: "Aditya Birla Capital, Haryana Ration Card guide (secondary source; replace with Haryana Food, Civil Supplies and Consumer Affairs Dept notification)"
+      clause: "Documents required and card types"
+      url: "https://www.adityabirlacapital.com/abc-of-money/haryana-ration-card"
+    verified_on: 2026-10-07
+    verified_by: [REVIEWER_1_NAME, REVIEWER_2_NAME]
+    expires_on: 2027-01-05
+    test_vectors:
+      - input: {haryana_domicile: true, has_ration_card: false}
+        expect: verify
+      - input: {haryana_domicile: true, has_ration_card: true}
+        expect: needs_official_decision
+
+  - id: rat_002
+    description: "Annual household income at most Rs 1,80,000 may qualify for a BPL card. Sources give conflicting limits (older pages say Rs 10,000), so confirm with the Food and Supplies office."
+    when:
+      - field: haryana_domicile
+        op: eq
+        value: true
+      - field: annual_income_inr
+        op: lte
+        value: 180000
+    outcome: verify
+    documents: [income_certificate, aadhaar_card]
+    desk: food_and_supplies_office
+    source:
+      doc: "Aditya Birla Capital, Haryana Ration Card guide (secondary source; replace with official notification)"
+      clause: "BPL and APL income limits"
+      url: "https://www.adityabirlacapital.com/abc-of-money/haryana-ration-card"
+    verified_on: 2026-10-07
+    verified_by: [REVIEWER_1_NAME, REVIEWER_2_NAME]
+    expires_on: 2027-01-05
+    test_vectors:
+      - input: {haryana_domicile: true, annual_income_inr: 150000}
+        expect: verify
+      - input: {haryana_domicile: true, annual_income_inr: 250000}
+        expect: needs_official_decision

@@ -1,0 +1,22 @@
+scheme: atal_pension
+state: haryana
+rules:
+  - id: atal_pension_001
+    description: "Atal Pension eligibility."
+    when:
+      - field: age
+        op: gte
+        value: 18
+      - field: age
+        op: lte
+        value: 40
+    outcome: include
+    documents: ['aadhaar', 'bank_passbook']
+    desk: bank
+    source: {doc: "Atal Pension Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

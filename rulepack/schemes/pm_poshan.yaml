@@ -1,0 +1,19 @@
+scheme: pm_poshan
+state: haryana
+rules:
+  - id: pm_poshan_001
+    description: "Mid-day Meal eligibility."
+    when:
+      - field: is_school_child
+        op: eq
+        value: true
+    outcome: include
+    documents: ['school_id', 'aadhaar']
+    desk: school
+    source: {doc: "Mid-day Meal Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

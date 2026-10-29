@@ -1,0 +1,19 @@
+scheme: dairy
+state: haryana
+rules:
+  - id: dairy_001
+    description: "Dairy Entrepreneurship eligibility."
+    when:
+      - field: has_cattle
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'project_report']
+    desk: animal_husbandry
+    source: {doc: "Dairy Entrepreneurship Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

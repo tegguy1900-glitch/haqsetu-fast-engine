@@ -1,0 +1,18 @@
+text,intent
+"Main Ramesh hoon kaam dhund raha hoon",MGNREGA
+"Mujhe job chahiye sarkari scheme se",MGNREGA
+"I want employment under MGNREGA act",MGNREGA
+"Gaon mein koi work nahi mil raha hai",MGNREGA
+"Meri pension ruki hui hai",OLD_AGE_PENSION
+"Mujhe budhape ki pension deni hai",OLD_AGE_PENSION
+"Senior citizen allowance apply karna hai",OLD_AGE_PENSION
+"Pati ki death ho gayi ab vidhwa pension chahiye",VIDHWA_PENSION
+"My husband died I need widow support",VIDHWA_PENSION
+"Widow certificate ke liye kya karun",VIDHWA_PENSION
+"Mera pati mar gaya hai ab mujhe kaise guzara karna hai",VIDHWA_PENSION
+"Patni ki mrityu ke baad alimony chahiye",VIDHWA_PENSION
+"Husband expired wife pension claim",VIDHWA_PENSION
+"Handpump toot gaya paani nahi aa raha",INFRA_BROKEN
+"Sarak par bada gaddha hai accident hogaya",INFRA_BROKEN
+"Street light jalna band hai raat ko andhera",INFRA_BROKEN
+"Grievance register karna hai infrastructure issue",INFRA_BROKEN

@@ -1,0 +1,21 @@
+scheme: certificate_delay
+state: haryana
+rules:
+  - id: certificate_delay_001
+    description: "Certificate Delay grievance."
+    when:
+      - field: cert_delayed
+        op: eq
+        value: true
+    outcome: verify
+    documents: []
+    desk: tehsil
+    clock_hours: 72
+    contact: "Grievance Officer"
+    source: {doc: "Civic Guidelines", clause: "SLA", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

@@ -1,0 +1,181 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HaqSetu | Speak → Schemes → SLA → Hierarchy</title>
+<style>
+:root{--saffron:#FF9933;--green:#138808;--navy:#000080;--bg:#f4f6f9}
+body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:#222}
+.tricolor{height:6px;display:flex}.tricolor div{flex:1}
+header{background:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+h1{margin:0;font-size:19px;color:var(--navy)}.sub{font-size:11px;color:#666;margin:0}
+nav{background:var(--navy);padding:0 24px;display:flex;gap:16px;flex-wrap:wrap}
+nav button{background:none;border:none;color:#fff;padding:13px 0;font-size:13px;cursor:pointer;border-bottom:3px solid transparent}
+nav button.active{border-bottom:3px solid var(--saffron);font-weight:bold}
+main{max-width:980px;margin:0 auto;padding:20px}
+.card{background:#fff;border-radius:8px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,.05);margin-bottom:16px}
+.card h2{margin-top:0;color:var(--navy);border-bottom:2px solid var(--saffron);padding-bottom:6px;display:inline-block}
+.btn{background:var(--navy);color:#fff;border:none;padding:10px 16px;border-radius:4px;cursor:pointer;font-size:13px;margin:3px}
+.btn-saffron{background:var(--saffron)}.btn-green{background:var(--green)}.btn-red{background:#dc2626}
+#mic-btn{width:100px;height:100px;border-radius:50%;background:#dc2626;color:#fff;font-size:32px;border:none;cursor:pointer;margin:12px auto;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(220,38,38,.4)}
+.alert{padding:12px;border-radius:6px;margin:10px 0;font-weight:bold}
+.ok{background:#dcfce7;color:#166534;border:1px solid #86efac}.bad{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}.warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.chip{display:inline-block;background:#e0e7ff;color:#3730a3;border-radius:14px;padding:4px 12px;margin:3px;font-size:12px}
+.sch{border-left:6px solid var(--green);background:#f0fdf4;border-radius:8px;padding:12px;margin:8px 0}
+.sch.likely{border-left-color:#f59e0b;background:#fffbeb}.sch.meet{border-left-color:#2563eb;background:#eff6ff}
+.sch h3{margin:0 0 4px;font-size:15px}.sch p{margin:2px 0;font-size:13px}
+.pbtn{background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:9px 11px;margin:3px;cursor:pointer;font-size:13px}
+.rbtn{display:block;width:100%;text-align:left;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:10px;padding:16px;margin:8px 0;cursor:pointer;font-size:15px}
+.rbtn b{color:#38bdf8}
+pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:6px;font-size:12px;overflow:auto;max-height:260px;white-space:pre-wrap}
+input,select{padding:8px;border:1px solid #ccc;border-radius:4px;margin:3px}
+.hidden{display:none}#clock{font-size:22px;font-weight:bold;color:#b45309}
+#qrbox{margin:10px auto;max-width:170px}#qrbox svg{width:100%;height:auto}
+</style></head><body>
+<div class="tricolor"><div style="background:var(--saffron)"></div><div style="background:#fff"></div><div style="background:var(--green)"></div></div>
+<header><div><h1>HaqSetu | हकसेतु</h1><p class="sub">The village speaks · the right desk is named · the plan fits one visit · the clock is public · the machine never denies.</p></div>
+<button class="btn btn-saffron" onclick="testVoice()">🔊 Enable Voice</button></header>
+<nav>
+<button class="active" onclick="tab('intake',this)">1 · Intake + RTPS Petition</button>
+<button onclick="tab('ticket',this)">2 · Civil Ticket (Geo + OTP)</button>
+<button onclick="tab('planner',this)">3 · Planner + DBT Chain</button>
+<button onclick="tab('digest',this)">4 · Block Digest</button>
+<button onclick="tab('integrity',this)">5 · Ledger + Deny Shield</button>
+<button onclick="tab('hier',this)">6 · Hierarchy Views</button>
+</nav>
+<main>
+<section id="t-intake"><div class="card" style="text-align:center"><h2>Voice-First Intake (abstains when unsure)</h2>
+<button id="mic-btn" onclick="listen()">🎙️</button>
+<p id="vstatus" style="font-weight:bold;color:#666">Speak or tap: age, widow, disabled, pregnant, farmer, no house, no gas, handpump…</p>
+<select id="gp"><option>GP-01</option><option>GP-02</option><option>GP-03</option></select>
+<input id="typed" size="40" placeholder="or type: main 66 saal ki vidhwa hoon, kacha ghar hai">
+<button class="btn" onclick="send(document.getElementById('typed').value)">Match Me</button>
+<div style="margin:10px 0">
+<button class="pbtn" onclick="pick('main 66 saal ki vidhwa hoon, pension nahi aayi')">👵 Pension</button>
+<button class="pbtn" onclick="pick('main kisan hoon, kist nahi aayi')">🌾 PM-KISAN</button>
+<button class="pbtn" onclick="pick('fasal kharab ho gayi, bima hai')">🌧 Crop loss</button>
+<button class="pbtn" onclick="pick('mera kacha ghar hai, bpl hoon')">🏠 Housing</button>
+<button class="pbtn" onclick="pick('gaon ka handpump kharab ho gaya hai')">💧 Handpump</button>
+<button class="pbtn" onclick="pick('aaj mausam kaisa hai')">❓ Off-topic (abstain)</button></div>
+<div id="chips"></div><div id="out"></div>
+<button class="btn btn-green hidden" id="petbtn" onclick="petition()">📜 Generate RTPS Petition + SLA Clock</button>
+<div id="clock"></div><pre id="pet" class="hidden"></pre><div id="qrbox"></div>
+</div></section>
+
+<section id="t-ticket" class="hidden"><div class="card"><h2>Civil Ticket: geo-photo in, geo-photo + OTP out</h2>
+<p style="font-size:13px">Photo of broken asset → GPS + timestamp → SHA-256 into the ledger → SLA clock. Closure needs citizen OTP (their device or read-back) AND a NEW fix photo within 200 m of the break photo.</p>
+Case label <input id="case" value="DEMO-001" size="10">
+<input type="file" id="ph1" accept="image/*"><button class="btn" onclick="lockEvidence()">📍 GPS + hash → lock in ledger</button>
+<div id="ev1"></div>
+<button class="btn btn-saffron" onclick="issueOtp()">🔢 Issue citizen OTP</button><span id="otpshow" style="font-weight:bold;color:#b45309"></span>
+<div style="margin-top:10px">OTP read-back <input id="otp" size="6"> NEW photo of FIXED site <input type="file" id="ph2" accept="image/*">
+<button class="btn btn-green" onclick="closeTicket()">✅ Close ticket</button></div>
+<div id="ev2"></div></div></section>
+
+<section id="t-planner" class="hidden"><div class="card"><h2>One-Visit Planner + DBT dependency chain</h2>
+<label><input type="checkbox" class="cb" value="pm_kisan" onchange="runPlan()"> PM-KISAN</label>
+<label><input type="checkbox" class="cb" value="pension" onchange="runPlan()"> Pension</label>
+<label><input type="checkbox" class="cb" value="awas" onchange="runPlan()"> PM Awas</label>
+<label><input type="checkbox" class="cb" value="ayushman" onchange="runPlan()"> Ayushman</label>
+<div id="planres" class="alert warn">Toggle schemes.</div><div id="dbt"></div></div></section>
+
+<section id="t-digest" class="hidden"><div class="card"><h2>Weekly cryptographic Block Digest (privacy-safe)</h2>
+<button class="btn" onclick="buildDigest()">Build digest</button>
+<button class="btn btn-green" onclick="sendDigest()">📤 Send to Block Dashboard</button>
+<div id="dig"></div></div></section>
+
+<section id="t-integrity" class="hidden"><div class="card"><h2>Sabha Ledger + Deny Shield</h2>
+<button class="btn btn-green" onclick="checkChain()">🔎 Verify chain</button>
+<button class="btn btn-red" onclick="attackChain()">🧨 Tamper an entry</button>
+<button class="btn" onclick="audit()">🧾 Signed-chain audit</button>
+<div id="chainres"></div><pre id="chainrows"></pre>
+<input id="denyreason" size="36" placeholder="corrupt reason e.g. no funds">
+<button class="btn btn-red" onclick="deny()">⚠️ ATTEMPT DENIAL</button><pre id="denyres" class="hidden"></pre>
+</div></section>
+
+<section id="t-hier" class="hidden"><div class="card"><h2>Hierarchy: Villager → Panchayat → SDM → DM</h2>
+<p style="font-size:13px">Open in this order for the judge demo. On a phone, scan the QR on Tab 1 instead — it pairs the citizen's device for OTP.</p>
+<button class="rbtn" onclick="openRole('villager')"><b>📱 VILLAGER VIEW</b> — slip status, live SLA countdown, citizen OTP + confirm, one-tap appeal, privacy note.</button>
+<button class="rbtn" onclick="openRole('panchayat')"><b>🖥️ PANCHAYAT LED BOARD</b> — red/amber/green dots from the live ledger, pending-at-Panchayat vs pending-at-other-office, meeting agenda.</button>
+<button class="rbtn" onclick="openRole('sdm')"><b>🧑‍💼 SDM DASHBOARD</b> — per-GP table + auto-escalations with evidence.</button>
+<button class="rbtn" onclick="openRole('dm')"><b>🗺️ DM DASHBOARD</b> — counts only, merged small cells, abstention rate, staged bottleneck map (labelled).</button>
+</div></section>
+</main>
+<script>
+let voice=null,unlocked=false,lastText='',origHash='',origGeo='';
+function loadVoices(){const v=speechSynthesis.getVoices();voice=v.find(x=>x.lang==='en-IN')||v.find(x=>x.lang==='hi-IN')||v.find(x=>x.lang.startsWith('en'))||v[0];}
+if('speechSynthesis' in window){speechSynthesis.onvoiceschanged=loadVoices;loadVoices();setInterval(()=>{if(!voice)loadVoices();},500);}
+document.body.addEventListener('click',()=>{if(!unlocked&&'speechSynthesis' in window){unlocked=true;speechSynthesis.resume();}},{once:true});
+function speak(t){if(!('speechSynthesis' in window))return;if(!voice)loadVoices();speechSynthesis.cancel();
+ const u=new SpeechSynthesisUtterance(t);if(voice)u.voice=voice;u.rate=0.92;speechSynthesis.speak(u);}
+function testVoice(){unlocked=true;speak('Voice ready. Please describe your conditions.');}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null;
+if(SR){rec=new SR();rec.lang='hi-IN';rec.interimResults=false;rec.onresult=e=>send(e.results[0][0].transcript);
+ rec.onerror=e=>document.getElementById('vstatus').textContent='⚠️ Mic error: '+e.error+(e.error==='network'?' (ASR needs internet; tap a pictogram)':'');}
+function listen(){if(!rec)return document.getElementById('vstatus').textContent='Use Chrome/Edge or type/tap.';
+ document.getElementById('vstatus').textContent='🔴 Listening…';rec.start();}
+function pick(t){document.getElementById('typed').value=t;send(t);}
+function openRole(r){window.open('/roles?role='+r+(r==='villager'?'&case='+(window.lastCase||''):''),'_blank');}
+async function send(text){if(!text)return;lastText=text;document.getElementById('vstatus').textContent='Heard: "'+text+'"';
+ const d=await(await fetch('/api/match',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({text:text,gp:document.getElementById('gp').value})})).json();
+ window.lastCase=d.case||'';
+ document.getElementById('chips').innerHTML=Object.entries(d.facts).map(([k,v])=>`<span class="chip">${k}: ${v}</span>`).join('');
+ const out=document.getElementById('out');
+ if(d.action==='ABSTAIN'){out.innerHTML='<div class="alert warn">⚠️ '+d.speak+'</div>';speak(d.speak);
+  document.getElementById('petbtn').classList.add('hidden');document.getElementById('qrbox').innerHTML='';return;}
+ let h='';
+ d.can.forEach(r=>h+=`<div class="sch"><h3>✅ Enrol: ${r.scheme.replace(/_/g,' ')}</h3><p>${r.desc}</p><p><b>Bring:</b> ${(r.docs||[]).join(', ')||'—'} · <b>Desk:</b> ${r.desk}</p></div>`);
+ d.likely.forEach(r=>h+=`<div class="sch likely"><h3>📄 Likely: ${r.scheme.replace(/_/g,' ')}</h3><p><b>Verify:</b> ${r.missing.join(', ')}</p></div>`);
+ d.civic.forEach(c=>h+=`<div class="sch meet"><h3>🏛️ ${c.replace(/_/g,' ')} → SLA clock + meeting agenda</h3></div>`);
+ out.innerHTML=h||'<div class="alert warn">No match; facilitator verifies.</div>';
+ document.getElementById('petbtn').classList.remove('hidden');showQR();speak(d.speak);}
+async function showQR(){if(!window.lastCase)return;
+ document.getElementById('qrbox').innerHTML=await(await fetch('/api/qr?case='+window.lastCase)).text();}
+async function petition(){const d=await(await fetch('/api/petition',{method:'POST',headers:{'Content-Type':'application/json'},
+ body:JSON.stringify({text:lastText,case:window.lastCase})})).json();
+ const p=document.getElementById('pet');p.classList.remove('hidden');p.textContent=d.petition;tick(d.deadline);
+ speak('Petition filed under the Right to Service Act. The countdown clock has started.');}
+function tick(dl){const D=new Date(dl);clearInterval(window._t);
+ window._t=setInterval(()=>{const ms=D-Date.now();const el=document.getElementById('clock');
+  if(ms<=0){el.textContent='⏰ SLA BREACHED — auto-escalated to next officer';return;}
+  el.textContent=`⏳ SLA remaining: ${Math.floor(ms/864e5)}d ${Math.floor(ms/36e5)%24}h ${Math.floor(ms/6e4)%60}m ${Math.floor(ms/1e3)%60}s`;},1000);}
+async function fileHash(f){const buf=await f.arrayBuffer();
+ if(crypto.subtle){const d=await crypto.subtle.digest('SHA-256',buf);return[...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+ let h=5381;for(const b of new Uint8Array(buf))h=((h<<5)+h+b)>>>0;return 'fb'+h;}
+function getGeo(){return new Promise(res=>{if(!navigator.geolocation)return res('unavailable');
+ navigator.geolocation.getCurrentPosition(p=>res(p.coords.latitude.toFixed(4)+','+p.coords.longitude.toFixed(4)),()=>res('denied'),{timeout:6000});});}
+async function lockEvidence(){const f=document.getElementById('ph1').files[0];if(!f)return alert('Pick a photo first.');
+ origHash=await fileHash(f);origGeo=await getGeo();
+ const d=await(await fetch('/api/evidence',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({case:document.getElementById('case').value,photo_hash:origHash,geo:origGeo,taken_at:new Date().toISOString()})})).json();
+ document.getElementById('ev1').innerHTML=`<div class="alert ok">🔒 Locked. GPS: ${origGeo} · SHA-256: ${origHash.slice(0,16)}… · receipt ${d.receipt.slice(0,16)}… · SLA clock started.</div>`;}
+async function issueOtp(){const d=await(await fetch('/otp/issue',{method:'POST',headers:{'Content-Type':'application/json','x-haq-token':localStorage.getItem('haq')||''},
+ body:JSON.stringify({case_id:document.getElementById('case').value})})).json();
+ document.getElementById('otpshow').textContent=d.channel==='citizen-device'?' 📲 OTP sent to the citizen device — they confirm there.':' (no device paired) read aloud: '+d.otp;}
+async function closeTicket(){const f=document.getElementById('ph2').files[0];if(!f)return alert('Closure needs the NEW fixed-site photo.');
+ const fh=await fileHash(f);const geo=await getGeo();
+ const d=await(await fetch('/api/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+  case:document.getElementById('case').value,otp:document.getElementById('otp').value,fix_photo_hash:fh,orig_photo_hash:origHash,geo:geo,orig_geo:origGeo})})).json();
+ document.getElementById('ev2').innerHTML=d.error?`<div class="alert bad">❌ ${d.error}</div>`:`<div class="alert ok">✅ ${d.status} — citizen OTP + new geo-photo verified, ledger updated.</div>`;}
+async function runPlan(){const s=[...document.querySelectorAll('.cb:checked')].map(i=>i.value);
+ const box=document.getElementById('planres');
+ if(!s.length){box.className='alert warn';box.textContent='Toggle schemes.';document.getElementById('dbt').innerHTML='';return;}
+ const d=await(await fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schemes:s})})).json();
+ box.className='alert ok';box.innerHTML=`Naive visits <b>${d.naive}</b> → planned <b>${d.planned}</b> · saved <b>${d.saved}</b>`;
+ document.getElementById('dbt').innerHTML='<h3>DBT legal dependency chain (long-pole tracked, not promised)</h3><ol>'+d.dbt.map(x=>`<li>${x}</li>`).join('')+'</ol>';}
+async function buildDigest(){const d=await(await fetch('/api/digest')).json();
+ document.getElementById('dig').innerHTML=`<pre>${JSON.stringify(d,null,1)}</pre>`;}
+async function sendDigest(){const d=await(await fetch('/api/digest_send',{method:'POST'})).json();
+ document.getElementById('dig').innerHTML+=`<div class="alert ok">📤 Digest sent; Block ack receipt ${d.ack.slice(0,16)}…</div>`;}
+async function checkChain(){const d=await(await fetch('/api/ledger')).json();
+ document.getElementById('chainres').innerHTML=d.ok?'<div class="alert ok">✅ CHAIN OK</div>':'<div class="alert bad">❌ TAMPER DETECTED</div>';
+ document.getElementById('chainrows').textContent=d.rows.map(r=>`${r.ts.slice(11,19)} ${r.event} ${r.hash}`).join('\n');}
+async function attackChain(){await fetch('/api/tamper',{method:'POST'});checkChain();}
+async function audit(){const d=await(await fetch('/audit')).json();
+ document.getElementById('chainrows').textContent=JSON.stringify(d,null,1);}
+async function deny(){const d=await(await fetch('/api/deny',{method:'POST',headers:{'Content-Type':'application/json'},
+ body:JSON.stringify({reason:document.getElementById('denyreason').value||'no reason'})})).json();
+ const p=document.getElementById('denyres');p.classList.remove('hidden');
+ p.textContent='DENIAL BLOCKED\n'+Object.entries(d.proof_trace).map(([k,v])=>k+': '+v).join('\n');speak('Denial blocked.');}
+function tab(id,btn){document.querySelectorAll('main section').forEach(s=>s.classList.add('hidden'));
+ document.getElementById('t-'+id).classList.remove('hidden');
+ document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+</script></body></html>

@@ -1,0 +1,21 @@
+[Unit]
+Description=Haq Setu Gram Sabha governance node (booth: village+sabha+sdm-preview + daemons)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=haqsetu
+Group=haqsetu
+WorkingDirectory=/opt/haqsetu
+EnvironmentFile=/etc/haqsetu/haqsetu.env
+ExecStart=/opt/haqsetu/venv/bin/python -m launcher --live
+Restart=on-failure
+RestartSec=3
+StateDirectory=haqsetu
+StateDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

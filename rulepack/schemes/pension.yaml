@@ -1,0 +1,57 @@
+scheme: pension
+state: haryana
+rules:
+  - id: pen_001
+    description: "Resident aged 60 or above with income under the limit and no other government pension is included."
+    when:
+      - field: age
+        op: gte
+        value: 60
+      - field: haryana_domicile
+        op: eq
+        value: true
+      - field: annual_income_inr
+        op: lte
+        value: 30000
+      - field: receives_other_govt_pension
+        op: eq
+        value: false
+    outcome: include
+    documents: [aadhaar, age_proof, bank_passbook, income_certificate]
+    desk: panchayat_secretary
+    source:
+      doc: "Haryana Old Age Pension Scheme Guidelines"
+      clause: "Eligibility criteria"
+      url: "https://haryana.gov.in"
+    verified_on: 2026-10-08
+    verified_by: [Student1, Student2]
+    expires_on: 2027-01-06
+    test_vectors:
+      - input: {age: 65, haryana_domicile: true, annual_income_inr: 0, receives_other_govt_pension: false}
+        expect: include
+      - input: {age: 55, haryana_domicile: true, annual_income_inr: 0, receives_other_govt_pension: false}
+        expect: needs_official_decision
+      - input: {age: 65, haryana_domicile: true, annual_income_inr: 0, receives_other_govt_pension: true}
+        expect: needs_official_decision
+
+  - id: pen_002
+    description: "Applicant already receives another government pension; eligibility must be verified."
+    when:
+      - field: receives_other_govt_pension
+        op: eq
+        value: true
+    outcome: verify
+    documents: [aadhaar, pension_book]
+    desk: block_development_officer
+    source:
+      doc: "Haryana Old Age Pension Scheme Guidelines"
+      clause: "Exclusion criteria"
+      url: "https://haryana.gov.in"
+    verified_on: 2026-10-08
+    verified_by: [Student1, Student2]
+    expires_on: 2027-01-06
+    test_vectors:
+      - input: {receives_other_govt_pension: true}
+        expect: verify
+      - input: {receives_other_govt_pension: false}
+        expect: needs_official_decision

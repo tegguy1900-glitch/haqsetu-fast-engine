@@ -1,0 +1,29 @@
+scheme: wage_work
+state: haryana
+rules:
+  - id: ww_001
+    description: "Household has registered a formal demand for work and has not been provided employment within 15 days."
+    when:
+      - field: demand_registered
+        op: eq
+        value: true
+      - field: days_since_demand
+        op: gte
+        value: 15
+    outcome: include
+    documents: [job_card, demand_receipt]
+    desk: gram_rozgar_sahayak
+    source:
+      doc: "MGNREGA Operational Guidelines"
+      clause: "Schedule II, Section 6 - Unemployment Allowance"
+      url: "https://nrega.nic.in/netnrega/homepage.aspx"
+    verified_on: 2026-10-08
+    verified_by: ["Ishaan", "Partner"]
+    expires_on: 2027-01-06
+    clock_hours: 72
+    contact: "Block Development Officer"
+    test_vectors:
+      - input: {demand_registered: true, days_since_demand: 16}
+        expect: include
+      - input: {demand_registered: true, days_since_demand: 10}
+        expect: needs_official_decision

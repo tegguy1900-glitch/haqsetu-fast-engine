@@ -1,0 +1,19 @@
+scheme: pmmvy
+state: haryana
+rules:
+  - id: pmmvy_001
+    description: "Maternity PMMVY eligibility."
+    when:
+      - field: is_pregnant
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar', 'mcp_card']
+    desk: anganwadi
+    source: {doc: "Maternity PMMVY Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

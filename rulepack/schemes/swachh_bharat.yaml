@@ -1,0 +1,22 @@
+scheme: swachh_bharat
+state: haryana
+rules:
+  - id: sbm_001
+    description: "Household without a toilet gets incentive to build one."
+    when:
+      - field: has_toilet
+        op: eq
+        value: false
+      - field: is_bpl
+        op: eq
+        value: true
+    outcome: include
+    documents: [aadhaar, bpl_card]
+    desk: panchayat_secretary
+    source: {doc: "SBM-G Guidelines", clause: "IHHL", url: "https://swachhbharatmission.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {has_toilet: false, is_bpl: true}
+        expect: include

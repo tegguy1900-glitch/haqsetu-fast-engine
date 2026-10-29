@@ -1,0 +1,19 @@
+scheme: anganwadi
+state: haryana
+rules:
+  - id: anganwadi_001
+    description: "Anganwadi Nutrition eligibility."
+    when:
+      - field: is_child_under_6
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar']
+    desk: anganwadi
+    source: {doc: "Anganwadi Nutrition Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

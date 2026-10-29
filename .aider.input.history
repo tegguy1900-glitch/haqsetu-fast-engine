@@ -1,0 +1,510 @@
+
+# 2026-10-21 22:58:53.272250
++Y
+
+# 2026-10-21 23:03:13.379293
++You are in ~/Downloads/project1. You have file and shell access. 
++Read HANDOFF.md, QWEN.md, and run_gates.sh from the disk.
++
++TASK: Implement the next 7 core engine bricks IN ORDER. Do them one by one. 
++Do NOT ask me for permission between bricks. Do NOT stop until all 7 are green OR a brick fails.
++
++THE LOOP FOR EACH BRICK:
++1. Read the source files for the brick.
++2. Write the code using WHOLE FILE writes. 
++3. Create the gate: core.run_<brick>_demo.py. Make sure it imports.
++4. Run ./run_gates.sh. Require ALL_GATES_GREEN.
++5. If red: read the traceback, repair ONCE, re-run. If STILL red, STOP immediately and paste the exact error to me. Do not start the next brick.
++6. If green: append "<brick> GREEN" to .agent/progress.txt, run `git add -A && git commit -m "brick: <brick> green"`, and move to the next brick.
++
++HARD RULES:
++- NEVER edit protected files (ledger/chain.py, core/event_bus.py, core/outbox.py, core/sla_clock.py, rulepack/loader.py, launcher.py).
++- NO new dependencies. NO network. NO pip install. Use the code's own fallbacks (ortools->greedy, z3->skip, sklearn->keyword).
++- NEVER weaken append-only, PII guard, never-deny, never-fabricate, PRIORITY, or date coercion.
++- Do NOT verify catalog thresholds. Do NOT deploy.
++
++THE 7 BRICKS (Do in this exact order):
++
++1. grievance -> core.run_grievance_demo.py
++Source: box/orchestrator.py, rulepack/routes/*.yaml, core/sla_clock.py.
++Goal: /voice must OPEN a tracked civic_intake case for grievance utterances (handpump, drain, road) using clock/desk from YAML. Entitlements still match. Empty input abstains.
++
++2. abstain_cal -> core.run_abstain_cal_demo.py
++Source: triage/abstain.py, triage/slots.py, triage/baselines.py.
++Goal: Bind the real confidence formula and threshold. Map to accept/one-question/abstain. Missing slots must force abstain, never guess.
++
++3. planner -> core.run_planner_demo.py
++Source: engine/planner.py, engine/critical_path.py.
++Goal: Matched entitlement returns ordered desk-visits + TTBR + bottleneck. Use greedy fallback if ortools is missing.
++
++4. redflags -> core.run_redflags_demo.py
++Source: engine/red_flags.py.
++Goal: Compute per-desk stall/reject rates FROM signed ledger rows. Flag HIGH/CRITICAL. Wording must flag RISK, never conclude guilt.
++
++5. closure -> core.run_closure_demo.py
++Source: engine/closure_loop.py, engine/appeal.py.
++Goal: Close needs two independent verifiers + citizen OTP + NEW fix-photo != break-photo + 200m geo. Disputed auto-reopens. 10% ghost audit.
++
++6. ladder -> core.run_ladder_demo.py
++Source: engine/vigilance_ladder.py.
++Goal: Tiers driven by signed-ledger timestamps (<24h local, 24-48h district, >48h state). Identity protected above panchayat.
++
++7. federation -> core.run_federation_demo.py
++Source: mesh/heatwave_server.py, mesh/district_twin.py, block/server.py.
++Goal: Block re-verifies each village chain. District aggregation is COUNTS-ONLY with small-cell suppression (<5). Forged rows rejected.
++
++Begin now by reading the files and executing Brick 1 (grievance). Do not return a plan. Just start coding.
+
+# 2026-10-21 23:03:25.610094
++Y
+
+# 2026-10-21 23:03:35.328889
++D
+
+# 2026-10-21 23:06:37.973000
++sudo systemctl stop ollama
++sudo apt-get remove -y ollama
++sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama
++curl -fsSL https://ollama.com/install.sh | sh
+
+# 2026-10-21 23:06:54.955184
++N
+
+# 2026-10-21 23:07:02.899931
++sudo systemctl stop ollama
++sudo apt-get remove -y ollama
++sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama
++curl -fsSL https://ollama.com/install.sh | sh
+
+# 2026-10-21 23:08:58.223347
++ollama list
+
+# 2026-10-21 23:11:38.114093
++sudo systemctl stop ollama
++sudo apt-get remove -y ollama
++sudo rm -rf /usr/local/lib/ollama /usr/local/bin/ollama
++curl -fsSL https://ollama.com/install.sh | sh
++sudo systemctl start ollama
+
+# 2026-10-21 23:22:38.739811
++N
+
+# 2026-10-21 23:22:53.500898
++You are in ~/Downloads/project1. You have file and shell access. 
++Read HANDOFF.md, QWEN.md, and run_gates.sh from the disk.
++
++TASK: Implement the next 7 core engine bricks IN ORDER. Do them one by one. 
++Do NOT ask me for permission between bricks. Do NOT stop until all 7 are green OR a brick fails.
++
++THE LOOP FOR EACH BRICK:
++1. Read the source files for the brick.
++2. Write the code using WHOLE FILE writes. 
++3. Create the gate: core.run_<brick>_demo.py. Make sure it imports.
++4. Run ./run_gates.sh. Require ALL_GATES_GREEN.
++5. If red: read the traceback, repair ONCE, re-run. If STILL red, STOP immediately and paste the exact error to me. Do not start the next brick.
++6. If green: append "<brick> GREEN" to .agent/progress.txt, run `git add -A && git commit -m "brick: <brick> green"`, and move to the next brick.
++
++HARD RULES:
++- NEVER edit protected files (ledger/chain.py, core/event_bus.py, core/outbox.py, core/sla_clock.py, rulepack/loader.py, launcher.py).
++- NO new dependencies. NO network. NO pip install. Use the code's own fallbacks (ortools->greedy, z3->skip, sklearn->keyword).
++- NEVER weaken append-only, PII guard, never-deny, never-fabricate, PRIORITY, or date coercion.
++- Do NOT verify catalog thresholds. Do NOT deploy.
++
++THE 7 BRICKS (Do in this exact order):
++
++1. grievance -> core.run_grievance_demo.py
++Source: box/orchestrator.py, rulepack/routes/*.yaml, core/sla_clock.py.
++Goal: /voice must OPEN a tracked civic_intake case for grievance utterances (handpump, drain, road) using clock/desk from YAML. Entitlements still match. Empty input abstains.
++
++2. abstain_cal -> core.run_abstain_cal_demo.py
++Source: triage/abstain.py, triage/slots.py, triage/baselines.py.
++Goal: Bind the real confidence formula and threshold. Map to accept/one-question/abstain. Missing slots must force abstain, never guess.
++
++3. planner -> core.run_planner_demo.py
++Source: engine/planner.py, engine/critical_path.py.
++Goal: Matched entitlement returns ordered desk-visits + TTBR + bottleneck. Use greedy fallback if ortools is missing.
++
++4. redflags -> core.run_redflags_demo.py
++Source: engine/red_flags.py.
++Goal: Compute per-desk stall/reject rates FROM signed ledger rows. Flag HIGH/CRITICAL. Wording must flag RISK, never conclude guilt.
++
++5. closure -> core.run_closure_demo.py
++Source: engine/closure_loop.py, engine/appeal.py.
++Goal: Close needs two independent verifiers + citizen OTP + NEW fix-photo != break-photo + 200m geo. Disputed auto-reopens. 10% ghost audit.
++
++6. ladder -> core.run_ladder_demo.py
++Source: engine/vigilance_ladder.py.
++Goal: Tiers driven by signed-ledger timestamps (<24h local, 24-48h district, >48h state). Identity protected above panchayat.
++
++7. federation -> core.run_federation_demo.py
++Source: mesh/heatwave_server.py, mesh/district_twin.py, block/server.py.
++Goal: Block re-verifies each village chain. District aggregation is COUNTS-ONLY with small-cell suppression (<5). Forged rows rejected.
++
++Begin now by reading the files and executing Brick 1 (grievance). Do not return a plan. Just start coding.
+
+# 2026-10-21 23:24:27.021693
++Y
+
+# 2026-10-21 23:24:37.123453
++YY
+
+# 2026-10-21 23:27:23.193895
++echo -e "venv/\n.git/\n__pycache__/\n*.pyc" > .aiderignore
+
+# 2026-10-21 23:27:35.590588
++Y
+
+# 2026-10-21 23:30:21.897370
++aider --model ollama/qwen2.5-coder:14b --edit-format whole --map-tokens 0\
+
+# 2026-10-21 23:32:11.609081
++N
+
+# 2026-10-21 23:32:20.669195
++You are in ~/Downloads/project1. Read HANDOFF.md and run_gates.sh.
++
++Implement ONLY brick: grievance
++Source files to read: box/orchestrator.py, rulepack/routes/*.yaml, core/sla_clock.py
++
++Goal: /voice must OPEN a tracked civic_intake case for grievance utterances (handpump, drain, road) using clock/desk from YAML. Entitlements still match. Empty input abstains.
++
++Rules:
++- Add gate: core/run_grievance_demo.py
++- Run ./run_gates.sh, require ALL_GATES_GREEN
++- If red, repair ONCE. If still red, STOP and show me the error.
++- If green, append "grievance GREEN" to .agent/progress.txt and commit.
++- Never edit protected files. No new deps.
++
++Begin by reading the files and coding Brick 1.
+
+# 2026-10-21 23:32:30.328500
++N
+
+# 2026-10-21 23:39:16.695515
++Y
+
+# 2026-10-21 23:39:23.383071
++N
+
+# 2026-10-21 23:49:07.676648
++Run ./run_gates.sh to verify Brick 1.
++If it shows ALL_GATES_GREEN, append "grievance GREEN" to .agent/progress.txt.
++Then start Brick 2: abstain_cal.
++Source: triage/abstain.py, triage/slots.py, triage/baselines.py.
++Goal: Bind the real confidence formula and threshold. Map to accept/one-question/abstain. Missing slots must force abstain, never guess.
++Create gate: core/run_abstain_cal_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-21 23:49:13.788159
++S
+
+# 2026-10-22 00:01:13.187992
++Y
+
+# 2026-10-22 00:14:36.355915
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "grievance GREEN" to .agent/progress.txt and commit.
++Then start Brick 2: abstain_cal.
++Source files: triage/abstain.py, triage/slots.py, triage/baselines.py.
++Goal: Bind the real confidence formula and threshold. Map to accept/one-question/abstain. Missing slots must force abstain, never guess.
++Create gate: core/run_abstain_cal_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 00:22:36.064917
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "abstain_cal GREEN" to .agent/progress.txt and commit.
++Then start Brick 3: planner.
++Source files: engine/planner.py, engine/critical_path.py.
++Goal: Matched entitlement returns ordered desk-visits + TTBR + bottleneck. Use greedy fallback if ortools is missing.
++Create gate: core/run_planner_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 00:22:42.800583
++S
+
+# 2026-10-22 00:36:11.133570
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "planner GREEN" to .agent/progress.txt and commit.
++Then start Brick 4: redflags.
++Source file: engine/red_flags.py.
++Goal: Compute per-desk stall/reject rates FROM signed ledger rows. Flag HIGH/CRITICAL. Wording must flag RISK, never conclude guilt.
++Create gate: core/run_redflags_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 00:36:17.452994
++N
+
+# 2026-10-22 00:52:59.932504
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "redflags GREEN" to .agent/progress.txt and commit.
++Then start Brick 5: closure.
++Source files: engine/closure_loop.py, engine/appeal.py.
++Goal: Close needs two independent verifiers + citizen OTP + NEW fix-photo != break-photo + 200m geo. Disputed auto-reopens. 10% ghost audit.
++Create gate: core/run_closure_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 00:53:05.120317
++S
+
+# 2026-10-22 01:13:21.779875
++N
+
+# 2026-10-22 01:15:09.427685
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "closure GREEN" to .agent/progress.txt and commit.
++Then start Brick 6: ladder.
++Source file: engine/vigilance_ladder.py.
++Goal: Tiers driven by signed-ledger timestamps (<24h local, 24-48h district, >48h state). Identity protected above panchayat.
++Create gate: core/run_ladder_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 01:15:19.613202
++D
+
+# 2026-10-22 01:39:17.680651
++n
+
+# 2026-10-22 01:41:21.600675
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "ladder GREEN" to .agent/progress.txt and commit.
++Then start Brick 7: federation.
++Source files: mesh/heatwave_server.py, mesh/district_twin.py, block/server.py.
++Goal: Block re-verifies each village chain. District aggregation is COUNTS-ONLY with small-cell suppression (<5). Forged rows rejected.
++Create gate: core/run_federation_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 01:41:31.200987
++D
+
+# 2026-10-22 02:13:09.641495
++cd ~/Downloads/project1
++./run_gates.sh
++cat .agent/progress.txt
+
+# 2026-10-22 02:39:24.654051
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "federation GREEN" to .agent/progress.txt and commit.
++Then start Brick 8: citizen_face.
++Goal: Permanently wire the web_demo/index.html file into village/server.py so it serves at the "/" route. Ensure the HTML page's fetch() calls hit the real /voice and /civic endpoints.
++Rules: Do not edit protected files. Keep existing /health and /chain routes intact.
++Create gate: core/run_citizen_face_demo.py that starts the server, hits "/", and verifies the HTML loads and /voice returns a match.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 02:39:31.753614
++D
+
+# 2026-10-22 03:06:51.668926
++n
+
+# 2026-10-22 03:07:01.940807
++y
+
+# 2026-10-22 03:13:07.044601
++Run ./run_gates.sh. If ALL_GATES_GREEN, append "citizen_face GREEN" to .agent/progress.txt and commit.
++Then start Brick 9: auditor_tools.
++Source files: rulepack/compiler_wall.py, rulepack/check_z3.py, eval/.
++Goal: Build a CLI tool that runs test_vectors through the engine and asserts the output matches expected. It must also scan all YAML files in rulepack/ and flag any scheme where verified_by is only [System, Auto-Verifier] as UNVERIFIED. 
++Rules: Do NOT install z3. If z3 is missing, skip that step and print a note. Do NOT fake human verifiers.
++Create gate: core/run_auditor_demo.py.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 03:13:18.932708
++D
+
+# 2026-10-22 04:02:36.057297
++cat << 'EOF' > auto_builder.py
++import subprocess
++import time
++import os
++
++# The base command for Aider
++AIDER_CMD = [
++    "aider", 
++    "--model", "ollama/qwen2.5-coder:14b", 
++    "--edit-format", "whole", 
++    "--map-tokens", "0", 
++    "--yes"
++]
++
++# Define all bricks and their exact prompts
++BRICKS = [
++    {
++        "id": 10, "name": "meeting_transcriber",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'pmfby_crop_loss GREEN' to .agent/progress.txt and commit. Then start Brick 10: meeting_transcriber. Source files: village/server.py. Goal: Add a POST route /meeting/upload. It accepts a text transcript. It must extract structured data: list of complaints, promises made, and attendance count. It must generate a formal summary report. Rules: Do NOT install Whisper. The gate will pass a hardcoded dummy transcript string. Do not edit protected files. Create gate: core/run_meeting_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'meeting_transcriber FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 11, "name": "ui_update",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'meeting_transcriber GREEN' to .agent/progress.txt and commit. Then start Brick 11: ui_update. Source files: web_demo/index.html, village/server.py. Goal: Update web_demo/index.html. 1. In Tab 1, add a quick button: 'Crop Loss'. 2. Add a new Tab 3: 'Meeting Upload' with a textarea and 'Process Meeting' button. 3. In Tab 2, after a ticket is locked, display a placeholder text box saying 'QR Code: [URL]'. Rules: Do NOT pip install new packages. Use a text placeholder for the QR code. Do not edit protected files. Create gate: core/run_ui_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'ui_update FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 12, "name": "master_demo",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'ui_update GREEN' to .agent/progress.txt and commit. Then start Brick 12: master_demo. Source files: village/server.py. Goal: Create a single automated script that simulates the entire citizen journey. 1. Start the server. 2. POST a 'farmer' utterance to /voice. 3. POST a 'handpump' utterance. 4. POST a dummy transcript to /meeting/upload. 5. Fetch the /status/{case_id} page. Rules: The script must run completely headlessly (no input() calls). Create gate: core/run_master_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'master_demo FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 13, "name": "otp_sms_alerts",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'master_demo GREEN' to .agent/progress.txt and commit. Then start Brick 13: otp_sms_alerts. Source files: village/server.py. Goal: 1. Add POST route /otp/generate (takes case_id, returns 4-digit OTP). 2. Add POST route /otp/verify. 3. When a civic case is created, generate a mock SMS text and append to /tmp/haqdemo/notifications.jsonl. Rules: Do NOT pip install new packages. Do not edit protected files. Create gate: core/run_otp_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'otp_sms_alerts FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 14, "name": "district_dashboard",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'otp_sms_alerts GREEN' to .agent/progress.txt and commit. Then start Brick 14: district_dashboard. Source files: village/server.py. Goal: Add a GET route /dashboard. It should read the ledger and outbox to calculate: Total Cases, Open Cases, Closed Cases, and SLA Breaches. Render a simple HTML page displaying these stats. Rules: Do NOT pip install charting libraries. Use simple HTML tables. Do not edit protected files. Create gate: core/run_dashboard_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'district_dashboard FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 15, "name": "village_simulator",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'district_dashboard GREEN' to .agent/progress.txt and commit. Then start Brick 15: village_simulator. Source files: village/server.py, rulepack/routes/*.yaml. Goal: Create a headless script that simulates 10 different citizen inputs. It must POST each to /voice, parse the response, check if it routed correctly, and log the pass/fail result to /tmp/haqdemo/simulator_feedback.jsonl. Rules: The script must run completely headlessly. Do NOT pip install new packages. Do not edit protected files. Create gate: core/run_simulator_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'village_simulator FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 16, "name": "llm_client",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'village_simulator GREEN' to .agent/progress.txt and commit. Then start Brick 16: llm_client. Goal: Create core/llm_client.py with a function ask_llm(prompt: str) -> str. It should send a POST request to http://localhost:11434/api/generate with model qwen2.5-coder:14b. It must handle timeouts and return 'LLM_UNAVAILABLE' if Ollama is not running. Update core/run_meeting_demo.py and core/run_simulator_demo.py to use ask_llm() instead of hardcoded strings. Rules: Do NOT pip install new packages. Use urllib.request. Do not edit protected files. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'llm_client FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 17, "name": "multi_agent",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'llm_client GREEN' to .agent/progress.txt and commit. Then start Brick 17: multi_agent. Source files: village/server.py, core/llm_client.py. Goal: Refactor the /voice endpoint to use a Multi-Agent architecture. 1. Create core/agents.py with three functions: triage_agent(text), legal_agent(intent, text), scheduler_agent(rules). 2. Update /voice route to call these agents sequentially. 3. Fallback: If LLM fails, use existing keyword fallbacks. Rules: Do NOT pip install new packages. Do not edit protected files. Create gate: core/run_agents_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'multi_agent FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 18, "name": "vision_processor",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'multi_agent GREEN' to .agent/progress.txt and commit. Then start Brick 18: vision_processor. Source files: village/server.py. Goal: Create core/vision_client.py. 1. It must have a function analyze_photo(image_path: str) -> dict. 2. It should use Python's built-in libraries to extract EXIF metadata (Timestamp, GPS) from the image. 3. It should simulate a Vision AI response by returning a structured JSON. 4. Update the /civic route to call analyze_photo() when a photo is uploaded. Rules: Do NOT pip install new packages. Do not edit protected files. Create gate: core/run_vision_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'vision_processor FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 19, "name": "offline_sync",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'vision_processor GREEN' to .agent/progress.txt and commit. Then start Brick 19: offline_sync. Source files: village/server.py. Goal: Create mesh/offline_queue.py. 1. When the village server tries to send data to the block/district but fails, it must save the payload to a local mesh/offline_queue.jsonl file. 2. Add a manual /sync/push route that reads offline_queue.jsonl and attempts to send the data again. 3. Once successfully sent, delete the row from the queue. Rules: Do NOT pip install new packages. Use standard urllib. Do not edit protected files. Create gate: core/run_sync_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'offline_sync FAILED' to .agent/progress.txt and STOP."
++    },
++    {
++        "id": 20, "name": "predictive_analytics",
++        "prompt": "Run ./run_gates.sh. If ALL_GATES_GREEN, append 'offline_sync GREEN' to .agent/progress.txt and commit. Then start Brick 20: predictive_analytics. Source files: village/server.py. Goal: Add a GET route /dashboard/predict. 1. It should read the historical ledger/chain.jsonl file. 2. Count the number of specific complaints per village. 3. Apply a simple projection (multiply current count by 1.2) to predict next month's load. 4. Return a simple JSON showing the prediction. Rules: Do NOT pip install new packages. Use standard Python dictionaries. Do not edit protected files. Create gate: core/run_predict_demo.py. Run ./run_gates.sh. If red, repair ONCE. If still red, append 'predictive_analytics FAILED' to .agent/progress.txt and STOP."
++    }
++]
++
++# Initialize status for all bricks
++for brick in BRICKS:
++    brick['status'] = 'PENDING'
++    brick['attempts'] = 0
++
++MAX_PASSES = 3
++progress_file = ".agent/progress.txt"
++
++def check_success(brick_name):
++    """Checks if the brick successfully appended GREEN to the progress file."""
++    if not os.path.exists(progress_file):
++        return False
++    with open(progress_file, 'r') as f:
++        content = f.read()
++    return f"{brick_name} GREEN" in content
++
++print("=== STARTING SELF-HEALING BUILD LOOP ===")
++
++for pass_num in range(1, MAX_PASSES + 1):
++    print(f"\n--- PASS {pass_num} of {MAX_PASSES} ---")
++    all_success = True
++    
++    for brick in BRICKS:
++        if brick['status'] == 'SUCCESS':
++            continue
++            
++        all_success = False
++        brick['attempts'] += 1
++        print(f"\n[Brick {brick['id']}: {brick['name']}] Attempt {brick['attempts']}...")
++        
++        # Run Aider
++        try:
++            # We pipe stdout/stderr to a log file to keep terminal clean
++            with open(f"brick_{brick['id']}_log.txt", "w") as log_file:
++                subprocess.run(
++                    AIDER_CMD + ["--message", brick['prompt']],
++                    stdout=log_file,
++                    stderr=subprocess.STDOUT,
++                    timeout=1800 # 30 minute timeout per brick
++                )
++        except subprocess.TimeoutExpired:
++            print(f"  -> TIMED OUT after 30 mins.")
++        except Exception as e:
++            print(f"  -> CRASHED: {e}")
++
++        # Check if it worked
++        if check_success(brick['name']):
++            print(f"  -> SUCCESS!")
++            brick['status'] = 'SUCCESS'
++        else:
++            print(f"  -> FAILED. Will retry in next pass.")
++            brick['status'] = 'FAILED'
++            
++        # Small cooldown to let RAM clear slightly
++        time.sleep(10)
++
++    if all_success:
++        print("\n=== ALL BRICKS SUCCESSFUL! BUILD COMPLETE. ===")
++        break
++else:
++    print("\n=== BUILD FINISHED. SOME BRICKS ARE STUCK. ===")
++    print("Stuck bricks:")
++    for brick in BRICKS:
++        if brick['status'] != 'SUCCESS':
++            print(f"  - Brick {brick['id']}: {brick['name']}")
++
++print("Check individual brick logs (e.g., brick_14_log.txt) for errors.")
++EOF
+
+# 2026-10-22 04:04:06.082578
++n
+
+# 2026-10-22 06:43:03.944056
++/exit
+
+# 2026-10-22 06:58:30.139863
++Run ./run_gates.sh. If ALL_GATES_GREEN, ensure "federation GREEN" is in .agent/progress.txt and commit.
++Then start Brick 8: qr_public_status.
++Source files: village/server.py, core/sla_clock.py.
++Goal: 
++1. When a civic case is created, generate a QR code (or a placeholder URL string if qrcode lib is missing) for http://127.0.0.1:8000/status/{case_id}.
++2. Add a GET route /status/{case_id} that returns a simple HTML page showing the case ID, status, and SLA time.
++Rules: Do NOT pip install new packages. Use try/except for qrcode import. Do not edit protected files.
++Create gate: core/run_qr_demo.py. It must start the server, create a case, and fetch /status/{id} to verify HTML returns.
++Run ./run_gates.sh. If red, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 06:58:36.310244
++N
+
+# 2026-10-22 07:07:42.423335
++cat .agent/progress.txt
+
+# 2026-10-22 07:12:04.721537
++Run ./run_gates.sh. Check .agent/progress.txt to see which bricks are already GREEN.
++Then start the NEXT brick that is NOT yet green.
++Build it, test it, and if it passes, append it to .agent/progress.txt and commit.
++If it fails, repair ONCE. If still red, STOP and show me the error.
+
+# 2026-10-22 21:24:10.910775
++n
+
+# 2026-10-22 21:24:20.822605
++You are in ~/Downloads/project1. 
++Task: Implement the Voice-Guided Application Engine (This will be our new Brick 9/10).
++Rules: 
++1. Do NOT rewrite village/server.py from scratch. ONLY modify the existing `_post` method in the `Handler` class to add the new routes. Keep the existing `http.server` structure.
++2. Create a new file `core/scheme_application.py`. 
++   - It must have a dictionary `SCHEME_REQUIREMENTS` defining the steps and required documents for "MGNREGA" (e.g., Required Docs: Aadhaar, Photo, Bank Passbook).
++   - It must have a function `process_voice_step(scheme, step, text)` that uses simple regex to extract data (e.g., extract 10 digits for mobile number).
++   - It must have a function `verify_document(scheme, doc_type, filename)` that checks if the uploaded file extension matches the required type. It should return a status: "Verified", "Wrong Document Type", or "Missing".
++3. In `village/server.py`, inside the `_post` method, add handling for `self.path == '/apply_step'` and `self.path == '/upload_doc'`.
++4. Create `core/run_application_demo.py`. It must import the functions, test the voice extraction and document verification with dummy data, print "application_engine PASSED", and exit immediately. Do NOT start a web server.
++5. Update `run_gates.sh` to include `python core/run_application_demo.py`.
++6. Run `./run_gates.sh`. If it passes, append "application_engine GREEN" to `.agent/progress.txt` and commit. If it fails, repair ONCE.
+
+# 2026-10-22 21:24:25.670015
++n
+
+# 2026-10-22 21:33:52.891546
++y
+
+# 2026-10-22 21:46:49.066046
++You are in ~/Downloads/project1.
++Task: Implement Brick 22 (Interactive Application UI).
++Rules:
++1. Edit `web_demo/index.html`. Do NOT rewrite the whole file. Just append a new section before the closing </body> tag.
++2. The new section should be a "Scheme Application" panel.
++   - It needs a dropdown to select a scheme (e.g., MGNREGA).
++   - It needs a display area for the "Current Step" (e.g., "Step 1: Tell me your Name").
++   - It needs a text input for voice/text entry.
++   - It needs a file upload button for documents.
++   - It needs a "Status/Feedback" box to show messages like "Verified" or "Wrong Document".
++3. Add JavaScript inside the HTML (in a <script> tag) to handle the logic:
++   - When the user types/speaks and hits "Next", send a POST to `/apply_step` with the scheme, current step, and text. Update the UI with the response.
++   - When the user uploads a file, send a POST to `/upload_doc` with the scheme, doc type, and file data. Update the UI with the verification status.
++4. Create `core/run_ui_application_demo.py`. It must read `web_demo/index.html`, check if it contains "Scheme Application" and "/apply_step", print "ui_application PASSED", and exit.
++5. Update `run_gates.sh` to include this new demo script.
++6. Run `./run_gates.sh`. If it passes, append "ui_application GREEN" to `.agent/progress.txt` and commit.
+
+# 2026-10-22 21:57:15.856370
++y

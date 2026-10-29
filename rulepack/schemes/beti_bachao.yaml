@@ -1,0 +1,19 @@
+scheme: beti_bachao
+state: haryana
+rules:
+  - id: beti_bachao_001
+    description: "Beti Bachao eligibility."
+    when:
+      - field: is_girl_child
+        op: eq
+        value: true
+    outcome: include
+    documents: ['birth_cert']
+    desk: woman_child_dept
+    source: {doc: "Beti Bachao Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

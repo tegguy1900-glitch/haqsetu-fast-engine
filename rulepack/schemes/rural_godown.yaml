@@ -1,0 +1,19 @@
+scheme: rural_godown
+state: haryana
+rules:
+  - id: rural_godown_001
+    description: "Rural Godown eligibility."
+    when:
+      - field: is_farmer_group
+        op: eq
+        value: true
+    outcome: include
+    documents: ['registration_cert']
+    desk: agri_dept
+    source: {doc: "Rural Godown Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

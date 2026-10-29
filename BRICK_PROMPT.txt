@@ -1,0 +1,14 @@
+Read HANDOFF.md and QWEN.md.
+
+Implement ONLY brick {{BRICK}}.
+
+Do not touch protected files. Do not add dependencies. Do not use network.
+Do not resurrect legacy server.py / box / api chains. Do not weaken append-only,
+PII guard, never-deny, never-fabricate, PRIORITY, or date coercion.
+
+Required:
+- Add or update a gate named core.run_{{BRICK}}_demo.py unless HANDOFF says otherwise.
+- Run ./run_gates.sh.
+- If red, repair ONCE. If still red, stop and paste the exact traceback.
+- If green, commit on the current branch: brick: {{BRICK}} green
+- Stop. Do not start the next brick. Show me the diff before committing.

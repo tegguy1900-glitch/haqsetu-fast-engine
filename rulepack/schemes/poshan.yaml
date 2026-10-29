@@ -1,0 +1,19 @@
+scheme: poshan
+state: haryana
+rules:
+  - id: poshan_001
+    description: "Poshan Abhiyaan eligibility."
+    when:
+      - field: is_pregnant_or_lactating
+        op: eq
+        value: true
+    outcome: include
+    documents: ['aadhaar']
+    desk: anganwadi
+    source: {doc: "Poshan Abhiyaan Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

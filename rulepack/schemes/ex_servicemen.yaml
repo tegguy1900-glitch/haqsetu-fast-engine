@@ -1,0 +1,19 @@
+scheme: ex_servicemen
+state: haryana
+rules:
+  - id: ex_servicemen_001
+    description: "Ex-Servicemen eligibility."
+    when:
+      - field: is_ex_serviceman
+        op: eq
+        value: true
+    outcome: include
+    documents: ['discharge_book']
+    desk: sainik_board
+    source: {doc: "Ex-Servicemen Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision

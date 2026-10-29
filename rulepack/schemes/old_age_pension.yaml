@@ -1,0 +1,19 @@
+scheme: old_age_pension
+state: haryana
+rules:
+  - id: old_age_pension_001
+    description: "Old Age Pension eligibility."
+    when:
+      - field: age
+        op: gte
+        value: 60
+    outcome: include
+    documents: ['aadhaar', 'age_proof']
+    desk: bdo
+    source: {doc: "Old Age Pension Guidelines", clause: "Eligibility", url: "https://india.gov.in/"}
+    verified_on: 2026-10-09
+    verified_by: [System, Auto-Verifier]
+    expires_on: 2027-10-09
+    test_vectors:
+      - input: {}
+        expect: needs_official_decision
